@@ -1,0 +1,44 @@
+GAME ACCOUNT SWITCHER - TERMS OF USE
+
+Please read this before installing.
+
+1. NOT AFFILIATED WITH RIOT GAMES
+This software is an unofficial, independent tool. It isn't endorsed by Riot Games and doesn't reflect the
+views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games
+properties. Riot Games, VALORANT and all associated properties are trademarks or registered trademarks of
+Riot Games, Inc.
+
+2. YOUR ACCOUNTS, YOUR RESPONSIBILITY
+Use this software only with accounts that belong to you, on your own PC. You are responsible for following
+Riot Games' Terms of Service and the rules of any other service you use it with. Third-party tools can lead
+to warnings or penalties on an account at the publisher's discretion; the author can't promise otherwise and
+isn't responsible for them. Don't use it to share, sell, rent or boost accounts, or to cheat.
+
+3. WHAT THE SOFTWARE DOES WITH YOUR DATA
+- Saved logins stay on this PC, encrypted for your Windows user. Passwords you choose to save go in Windows
+  Credential Manager. Nothing is uploaded to the author, and there is no analytics or tracking.
+- Once a day the app may ask GitHub whether a newer version exists. GitHub sees your IP address as it does for
+  any web request. This can be turned off in the app.
+- The app starts and talks to the official Riot Client on your PC. Signing in happens in Riot's own window.
+- Backups you create are encrypted with your passphrase and still contain working logins: keep them private.
+
+4. DEVICE PERMISSION
+The app closes and restarts the Riot Client, swaps its saved-login files, and can start Deceive (below), if you download it. It does
+not modify game files or Vanguard.
+
+5. OPTIONAL "APPEAR OFFLINE"
+This uses Deceive, a separate open-source program made by others (GNU GPL v3.0). It is not included with this
+software: you download it yourself from https://github.com/molenzwiebel/Deceive when you first turn the feature
+on. It is unofficial and may stop working if Riot changes its chat system. Your use of Deceive is under its own
+license and terms.
+
+6. LICENSE
+Copyright (c) 2026 UnNooble. All rights reserved. You may install and use this software for personal,
+non-commercial use. You may not sell it, rent it, or copy or modify it without written permission.
+Third-party components keep their own licenses (see THIRD_PARTY_NOTICES.md).
+
+7. NO WARRANTY
+The software is provided "as is", without warranty of any kind. To the fullest extent the law allows, the
+author is not liable for any loss or damage, including loss of access to an account, arising from its use.
+
+If you don't agree, click Cancel and don't install the software.

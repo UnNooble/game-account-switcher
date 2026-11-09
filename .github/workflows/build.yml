@@ -1,0 +1,51 @@
+# Tag a release (git tag v3.2.0 && git push --tags) and GitHub builds the installer on real
+# Windows, runs the tests, and attaches GameAccountSwitcher-Setup-x.y.z.exe to the release page.
+name: build-installer
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller==6.16.0 pytest
+      - run: python -m pytest -q
+      - run: pyinstaller --noconfirm --clean --windowed --onedir --hidden-import PIL.ImageTk --name ValorantSwitcher --icon assets\icon.ico --add-data "assets;assets" main.py
+      - name: Make installer
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $ver = python -c "import switcher; print(switcher.VERSION)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$ver" installer\ValorantSwitcher.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/GameAccountSwitcher-Setup-*.exe
+      - name: Release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $lines = Get-Content CHANGELOG.md
+          $out = @(); $on = $false
+          foreach ($l in $lines) {
+            if ($l -match '^## ') { if ($on) { break }; $on = ($l -eq "## $ver") ; continue }
+            if ($on) { $out += $l }
+          }
+          $body = ($out -join "`n").Trim()
+          if (-not $body) { $body = "See CHANGELOG.md." }
+          $body += "`n`nRun **GameAccountSwitcher-Setup-$ver.exe**. Windows may say 'Windows protected your PC' because the installer isn't code-signed yet: click More info, then Run anyway. Updating over an older install keeps your accounts."
+          Set-Content -Path release-notes.md -Value $body -Encoding utf8
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: dist/GameAccountSwitcher-Setup-*.exe

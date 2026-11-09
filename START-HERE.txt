@@ -1,0 +1,15 @@
+GAME ACCOUNT SWITCHER
+
+TWO STEPS, ONCE:
+  1. Double-click  Build-Installer.cmd   (a black window runs for a few minutes: that's just it building)
+  2. When it finishes, an installer window opens by itself. Click Next, then Finish.
+     (If it doesn't, open the dist folder and double-click GameAccountSwitcher-Setup-x.y.z.exe)
+
+That's the real installer: a normal window with Next / Install / Finish, a desktop icon already ticked,
+and a Start-menu entry. Give that one Setup .exe to anyone; they never need the black window.
+
+USING IT:
+  Open it from the desktop icon or Start menu > Add Account > Riot username + password.
+  Then click Play on any account (or anywhere on its card).
+
+Updating: build again, run the new Setup .exe over the old one. Accounts are kept.
