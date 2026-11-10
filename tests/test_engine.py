@@ -47,6 +47,7 @@ class FakeRiot:
         self.game, self.valorant = False, False
         self.game_closed = getattr(self, "game_closed", 0) + 1
     def valorant_running(self): return self.valorant
+    def start_tracker(self, path): self.tracker_started = getattr(self, 'tracker_started', []) + [path]
     def client_running(self): return self.running
 
     def close(self):
@@ -722,3 +723,34 @@ def test_deceive_path_must_look_like_deceive(tmp_path):
     for bad in (evil, tmp_path / "Deceive.exe.bak", tmp_path / "missing" / "Deceive.exe"):
         with pytest.raises(UserError):
             valid_deceive(bad)
+
+
+def test_stats_overlay_starts_overwolf_only_when_on(env):
+    a = add(env, "Main", A)
+    env.engine.run(a)
+    assert getattr(env.riot, "tracker_started", []) == []          # off by default
+    env.riot.valorant = False
+    env.store.set_tracker_path("C:/x/OverwolfLauncher.exe")
+    env.store.set_stats_overlay(True)
+    env.engine.run(a)
+    assert env.riot.tracker_started == ["C:/x/OverwolfLauncher.exe"]
+
+
+def test_stats_overlay_problem_warns_but_game_still_starts(env, monkeypatch):
+    monkeypatch.setattr("switcher.riot.discover_tracker", lambda: "")
+    a = add(env, "Main", A)
+    env.store.set_stats_overlay(True)
+    env.engine.run(a)
+    assert env.riot.valorant
+    assert any(k == "warning" and "Overwolf" in d for k, d in env.events)
+
+
+def test_valid_tracker_needs_overwolf(tmp_path):
+    from switcher.riot import valid_tracker
+    good = tmp_path / "OverwolfLauncher.exe"
+    good.write_bytes(b"x")
+    assert valid_tracker(good) == good.resolve()
+    bad = tmp_path / "other.exe"
+    bad.write_bytes(b"x")
+    with pytest.raises(UserError):
+        valid_tracker(bad)

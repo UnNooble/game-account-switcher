@@ -41,7 +41,8 @@ def clean_label(value) -> str:
 
 
 def empty() -> dict:
-    return {"version": SCHEMA, "profiles": [], "active": None, "settings": {"riot_path": "", "deceive_path": "", "appear_offline": False}}
+    return {"version": SCHEMA, "profiles": [], "active": None, "settings": {"riot_path": "", "deceive_path": "", "appear_offline": False,
+                                                                       "tracker_path": "", "stats_overlay": False}}
 
 
 class Store:
@@ -85,6 +86,9 @@ class Store:
         deceive = raw.get("settings", {}).get("deceive_path", "")
         data["settings"]["deceive_path"] = deceive if isinstance(deceive, str) else ""
         data["settings"]["appear_offline"] = bool(raw.get("settings", {}).get("appear_offline", False))
+        tracker = raw.get("settings", {}).get("tracker_path", "")
+        data["settings"]["tracker_path"] = tracker if isinstance(tracker, str) else ""
+        data["settings"]["stats_overlay"] = bool(raw.get("settings", {}).get("stats_overlay", False))
         return data
 
     def write(self, data: dict) -> None:
@@ -142,6 +146,18 @@ class Store:
         with self.lock:
             data = self.read()
             data["settings"]["appear_offline"] = bool(value)
+            self.write(data)
+
+    def set_stats_overlay(self, value: bool) -> None:
+        with self.lock:
+            data = self.read()
+            data["settings"]["stats_overlay"] = bool(value)
+            self.write(data)
+
+    def set_tracker_path(self, value: str) -> None:
+        with self.lock:
+            data = self.read()
+            data["settings"]["tracker_path"] = value
             self.write(data)
 
     def set_deceive_path(self, value: str) -> None:

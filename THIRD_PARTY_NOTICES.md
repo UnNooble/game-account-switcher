@@ -14,6 +14,10 @@ This app is built with, and ships, the following third-party software. Each keep
 Not included: the optional "Appear offline" feature starts Deceive (https://github.com/molenzwiebel/Deceive,
 GNU GPL v3.0), a separate program the user downloads themselves. This app doesn't contain, copy or change it.
 
+Also not included: the optional "Stats overlay" switch starts Overwolf (https://www.overwolf.com), which runs the Tracker
+app from Tracker Network. They are separate programs the user installs themselves, under their own terms. This app
+doesn't contain, copy or change them and isn't affiliated with Overwolf or Tracker Network.
+
 Riot Games, VALORANT and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
 This project isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone
 officially involved in producing or managing Riot Games properties.

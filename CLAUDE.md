@@ -26,7 +26,7 @@ short, and don't make big changes without saying what they are.
 - Don't touch Vanguard, game files, the firewall or UAC. Never sign out of Riot (it revokes the saved login).
 - Keep it free and non-commercial (Riot's fan-project rules): no ads, donations, paywalls or license keys.
 - Keep Riot's non-endorsement notice and trademark line (README, TERMS.txt, footer). Don't put "valorant" in app names or GitHub topics.
-- Deceive is a separate GPL-3.0 program the user downloads themselves. Don't bundle, modify or link it into our code.
+- Deceive (GPL-3.0) and Overwolf + Tracker (stats overlay) are separate programs the user installs themselves. Don't bundle, modify or link it into our code.
 - Internal names stay for compatibility: `ValorantSwitcher.exe`, data folder `%LOCALAPPDATA%\ValorantProfiles`,
   Credential Manager target `ValorantSwitcher/`. The visible app name is in `APP_NAME`.
 - Riot changes its client often. Verify against real behavior on a Windows PC; the logs are in the data folder (`log.txt`, no secrets).

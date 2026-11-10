@@ -4,6 +4,8 @@
 - Roomier window: larger default and minimum size, the header split into two rows (title and buttons, then the hint and the Appear offline switch), and more space around cards and buttons.
 - The app is now called *Game Account Switcher* (no Riot trademarks in its name). The installer is `GameAccountSwitcher-Setup-x.y.z.exe`, shows the terms before installing, and includes the license and third-party notices. The in-app footer and README carry Riot's non-endorsement notice.
 - Appear offline: a switch at the top of the window. When it's on, the app launches the game through Deceive, which hides your chat status from friends. Deceive is a separate free program: the first time you turn the switch on, the app opens its official download page and then finds the downloaded `Deceive.exe` for you. ··· → *Appear offline setup* repeats this.
+- Stats overlay: a second switch at the top. When it's on, the app starts Overwolf with the game so the Tracker overlay shows in-game. Overwolf and the Tracker app are separate free programs: the first time, the app opens the official download page and then finds them for you. ··· → *Stats overlay setup* repeats this.
+- The taskbar now shows the app's own icon instead of the Python one.
 
 ## 3.7.0
 - Update notice: the app checks GitHub once a day for a newer release and shows a "Version X is available" banner with a Download button. ··· → *Check for updates* checks on demand, and *Automatic update check* turns it off. One anonymous request, no account data; silent when offline. Works once the repository's releases are public.

@@ -66,6 +66,31 @@ def discover_deceive() -> str:
     return ""
 
 
+def valid_tracker(path) -> Path:
+    """The stats overlay runs inside Overwolf, so this is the user's own Overwolf launcher."""
+    exe = Path(str(path)).resolve()
+    if not (exe.name.lower().startswith("overwolf") and exe.suffix.lower() == ".exe" and exe.is_file()):
+        raise UserError("The stats overlay needs Overwolf, but it wasn't found where it was last set. "
+                        "Choose it again in ··· → Stats overlay setup.")
+    return exe
+
+
+def discover_tracker() -> str:
+    """Look in the usual places for the Overwolf launcher the user already installed."""
+    roots = [Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Overwolf",
+             Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Overwolf",
+             Path(os.environ.get("LOCALAPPDATA", "")) / "Overwolf",
+             Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Overwolf"]
+    for root in roots:
+        for name in ("OverwolfLauncher.exe", "Overwolf.exe"):
+            try:
+                if (root / name).is_file():
+                    return str(root / name)
+            except OSError:
+                continue
+    return ""
+
+
 def discover_client() -> str:
     """Find RiotClientServices.exe on any drive using Riot's own install index."""
     program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
@@ -294,6 +319,14 @@ class RiotClient:
         if self.game_running():
             raise UserError("A Riot game started while switching. Close it and try again.")
         time.sleep(0.5)  # let Windows release file handles
+
+    def start_tracker(self, tracker: str) -> None:
+        """Start the user's own Overwolf (it shows the stats overlay once the game opens). Leaves it running."""
+        if any(n.startswith("overwolf") for n, _ in self._names()):
+            return
+        exe = valid_tracker(tracker)
+        log("starting Overwolf for the stats overlay")
+        subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=NO_WINDOW)
 
     def open(self, deceive: str = "") -> None:
         """Start Riot the same way the official VALORANT shortcut does: it signs in, then starts the game.

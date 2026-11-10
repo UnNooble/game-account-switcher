@@ -66,7 +66,7 @@ class App(tk.Tk):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         w = min(T.px(780), int(sw * 0.92))
         h = min(T.px(880), int(sh * 0.90))
-        self.minsize(min(T.px(640), w), min(T.px(640), h))
+        self.minsize(min(T.px(720), w), min(T.px(640), h))
         self.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 3)}")
 
     # ---------- popup menus ----------
@@ -114,11 +114,14 @@ class App(tk.Tk):
         # Second row: what to do on the left, the Appear offline switch on the right.
         sub = tk.Frame(self, bg=T.BG)
         sub.pack(fill="x", padx=pad, pady=(T.px(10), 0))
-        tk.Label(sub, text="Pick an account to start VALORANT.", font=T.font(10), fg=T.MUTED,
+        tk.Label(sub, text="Pick an account to play.", font=T.font(10), fg=T.MUTED,
                  bg=T.BG).pack(side="left")
+        self.tracker_btn = Pill(sub, "", self.toggle_tracker, kind="plain", height=34, padx=16)
+        self.tracker_btn.pack(side="right")
         self.offline_btn = Pill(sub, "", self.toggle_offline, kind="plain", height=34, padx=16)
-        self.offline_btn.pack(side="right")
+        self.offline_btn.pack(side="right", padx=(0, T.px(10)))
         self.show_offline_state()
+        self.show_tracker_state()
 
         tk.Label(self, text=f"Unofficial  ·  not endorsed by Riot Games  ·  v{VERSION}", font=T.font(8),
                  fg=T.FAINT, bg=T.BG).pack(side="bottom", pady=(T.px(4), T.px(14)))
@@ -237,6 +240,7 @@ class App(tk.Tk):
             None,
             ("Riot Client location…", self.settings),
             ("Appear offline setup…", self.deceive_setup),
+            ("Stats overlay setup…", self.tracker_setup),
             ("Open log file", self.open_log),
             None,
             ("Check for updates", self.check_updates_now),
@@ -588,6 +592,68 @@ class App(tk.Tk):
 
         sheet.buttons("Download Deceive", download, secondary="Close",
                       left=("I've downloaded it: find Deceive.exe", find))
+        sheet.show()
+
+    # ---------- stats overlay (the user's own Overwolf + Tracker app) ----------
+    def show_tracker_state(self):
+        on = self.store.read()["settings"].get("stats_overlay", False)
+        self.tracker_btn.set_text("Stats overlay: On" if on else "Stats overlay: Off")
+        self.tracker_btn.set_kind("tint" if on else "plain")
+
+    def toggle_tracker(self):
+        if self.guard_busy():
+            return
+        settings = self.store.read()["settings"]
+        turning_on = not settings.get("stats_overlay", False)
+        if turning_on and not (settings.get("tracker_path") or self.tracker_available()):
+            return self.tracker_setup(turn_on_after=True)
+        self.store.set_stats_overlay(turning_on)
+        self.show_tracker_state()
+        self.notice("Stats overlay " + ("on" if turning_on else "off"),
+                    "Overwolf will start with the game, and the Tracker overlay shows in-game."
+                    if turning_on else "Overwolf won't be started by this app anymore.")
+
+    def tracker_available(self):
+        from .riot import discover_tracker
+        found = discover_tracker()
+        if found:
+            self.store.set_tracker_path(found)
+        return bool(found)
+
+    def tracker_setup(self, turn_on_after=False):
+        import webbrowser
+        current = self.store.read()["settings"].get("tracker_path", "")
+        sheet = Sheet(self, "Stats overlay setup", width=580)
+        sheet.heading("Stats overlay setup")
+        sheet.text("The stats overlay is the Tracker app from Tracker Network. It runs inside Overwolf, a free "
+                   "program made by someone else. They aren't included here, so you install them once:", small=True)
+        sheet.text("1.  Click Download Tracker. A page opens in your browser: install the app (it installs "
+                   "Overwolf too).\n"
+                   "2.  Come back here and click \"I've installed it\".", color=T.FG)
+        if current:
+            sheet.text(f"Using: {current}", small=True)
+
+        def download():
+            webbrowser.open("https://www.overwolf.com/app/Tracker_Network-Valorant_Tracker")
+            return Sheet.STAY
+
+        def find():
+            from .riot import discover_tracker, valid_tracker
+            path = discover_tracker()
+            if not path:
+                path = filedialog.askopenfilename(parent=sheet, title="Choose OverwolfLauncher.exe",
+                                                  filetypes=[("Overwolf", "Overwolf*.exe")])
+                if not path:
+                    return
+            valid_tracker(path)
+            self.store.set_tracker_path(str(path))
+            if turn_on_after:
+                self.store.set_stats_overlay(True)
+                self.show_tracker_state()
+            sheet.close(True)
+
+        sheet.buttons("Download Tracker", download, secondary="Close",
+                      left=("I've installed it: find Overwolf", find))
         sheet.show()
 
     # ---------- updates ----------

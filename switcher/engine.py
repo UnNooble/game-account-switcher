@@ -327,6 +327,23 @@ class Engine:
                             "Use ··· → Appear offline setup to download it, or switch Appear offline off.")
         return path
 
+    def start_tracker(self) -> None:
+        """Stats overlay switch: start the user's Overwolf. A problem here never stops the game."""
+        settings = self.store.read()["settings"]
+        if not settings.get("stats_overlay"):
+            return
+        try:
+            from .riot import discover_tracker
+            path = settings.get("tracker_path", "") or discover_tracker()
+            if not path:
+                raise UserError("The stats overlay is on, but Overwolf wasn't found. "
+                                "Use ··· → Stats overlay setup to install it.")
+            self.riot.start_tracker(path)
+        except UserError as exc:
+            self.notify("warning", str(exc))
+        except Exception as exc:
+            log(f"couldn't start the stats overlay: {exc}")
+
     def launch(self, account, label, kicked=False):
         self.step(3, "Starting VALORANT… If Riot shows an update or asks to restart for Vanguard, follow its prompt.")
         start = self.clock()
@@ -452,6 +469,7 @@ class Engine:
         self.vault.restore(self.vault.blank() if fresh else saved["files"])
         log(f"restored files: {self.vault.files.describe()}")
         self.check()
+        self.start_tracker()
         self.riot.open(self.deceive_for(profile_id))
 
         login = new_login or (self.creds.load(profile_id) if profile_id else None)

@@ -32,6 +32,10 @@ def main():
         messagebox.showinfo(APP_NAME, "The app is already open. Use PLAY in its window"
                             + (" (or close it and use the shortcut again)." if autoplay else "."), parent=root)
         return 0
+    try:  # own taskbar identity: shows this app's icon instead of grouping under Python
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("UnNooble.GameAccountSwitcher")
+    except Exception:
+        pass
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
