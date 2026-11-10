@@ -2,7 +2,7 @@
 ; Built automatically by Build-Installer.cmd (or the GitHub workflow). Don't run by hand unless you want to.
 
 #ifndef AppVersion
-  #define AppVersion "3.8.0"
+  #define AppVersion "3.9.0"
 #endif
 #define AppName "Game Account Switcher"
 #define AppExe "ValorantSwitcher.exe"
