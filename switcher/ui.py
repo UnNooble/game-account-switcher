@@ -610,8 +610,8 @@ class App(tk.Tk):
         self.store.set_stats_overlay(turning_on)
         self.show_tracker_state()
         self.notice("Stats overlay " + ("on" if turning_on else "off"),
-                    "Overwolf will start with the game, and the Tracker overlay shows in-game."
-                    if turning_on else "Overwolf won't be started by this app anymore.")
+                    "Tracker will open when you start the game from here, and its overlay shows in-game."
+                    if turning_on else "Tracker won't be opened by this app anymore.")
 
     def tracker_available(self):
         from .riot import discover_tracker

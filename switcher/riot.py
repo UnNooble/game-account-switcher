@@ -66,6 +66,10 @@ def discover_deceive() -> str:
     return ""
 
 
+# Tracker Network's Valorant Tracker app, from its official Overwolf page.
+TRACKER_APP_ID = "ipmlnnogholfmdmenfijjifldcpjoecappfccceh"
+
+
 def valid_tracker(path) -> Path:
     """The stats overlay runs inside Overwolf, so this is the user's own Overwolf launcher."""
     exe = Path(str(path)).resolve()
@@ -321,12 +325,13 @@ class RiotClient:
         time.sleep(0.5)  # let Windows release file handles
 
     def start_tracker(self, tracker: str) -> None:
-        """Start the user's own Overwolf (it shows the stats overlay once the game opens). Leaves it running."""
-        if any(n.startswith("overwolf") for n, _ in self._names()):
-            return
+        """Open the Valorant Tracker app through the user's own Overwolf (starts Overwolf if needed).
+
+        Overwolf's documented command line is `-launchapp <app id>`. Both programs are left running.
+        """
         exe = valid_tracker(tracker)
-        log("starting Overwolf for the stats overlay")
-        subprocess.Popen([str(exe)], cwd=str(exe.parent), creationflags=NO_WINDOW)
+        log("opening the Tracker app through Overwolf")
+        subprocess.Popen([str(exe), "-launchapp", TRACKER_APP_ID], cwd=str(exe.parent), creationflags=NO_WINDOW)
 
     def open(self, deceive: str = "") -> None:
         """Start Riot the same way the official VALORANT shortcut does: it signs in, then starts the game.

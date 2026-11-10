@@ -754,3 +754,14 @@ def test_valid_tracker_needs_overwolf(tmp_path):
     bad.write_bytes(b"x")
     with pytest.raises(UserError):
         valid_tracker(bad)
+
+
+def test_tracker_is_opened_by_its_app_id(tmp_path, monkeypatch):
+    import subprocess
+    from switcher import riot as riot_mod
+    exe = tmp_path / "OverwolfLauncher.exe"
+    exe.write_bytes(b"x")
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append(cmd))
+    riot_mod.RiotClient.start_tracker(object(), str(exe))
+    assert calls == [[str(exe.resolve()), "-launchapp", riot_mod.TRACKER_APP_ID]]

@@ -328,7 +328,7 @@ class Engine:
         return path
 
     def start_tracker(self) -> None:
-        """Stats overlay switch: start the user's Overwolf. A problem here never stops the game."""
+        """Stats overlay switch: open the Tracker app through the user's Overwolf. A problem never stops the game."""
         settings = self.store.read()["settings"]
         if not settings.get("stats_overlay"):
             return

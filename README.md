@@ -26,7 +26,7 @@ While the repository is private, only people you've added as collaborators can o
 - **One-click switching.** Click a card and the game starts on that account.
 - **Hands-off first sign-in.** Enter username and password once. The app fills in Riot's sign-in window,
   ticks *Stay signed in*, presses the arrow, and launches the game.
-- **Stats overlay.** Optional switch that starts Overwolf with the game so the Tracker overlay shows in-game. Overwolf and the Tracker app are separate programs you install once.
+- **Stats overlay.** Optional switch that opens the Valorant Tracker app (through Overwolf) with the game so its overlay shows in-game. Overwolf and the Tracker app are separate programs you install once.
 - **2FA inside the app.** Email, text and authenticator codes are asked for in the app and typed into Riot
   for you, one digit per box. The prompt tells you where Riot sent the code (email shows the partly
   hidden address). For Riot Mobile you approve on your phone, or ask for an email code instead.
