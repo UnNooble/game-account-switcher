@@ -95,6 +95,14 @@ def discover_tracker() -> str:
     return ""
 
 
+def tracker_app_installed() -> bool:
+    """Is the Valorant Tracker app installed in Overwolf? Overwolf keeps each app in Extensions\\<app id>."""
+    try:
+        return (Path(os.environ.get("LOCALAPPDATA", "")) / "Overwolf" / "Extensions" / TRACKER_APP_ID).is_dir()
+    except OSError:
+        return False
+
+
 def discover_client() -> str:
     """Find RiotClientServices.exe on any drive using Riot's own install index."""
     program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))

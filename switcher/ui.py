@@ -601,12 +601,15 @@ class App(tk.Tk):
         self.tracker_btn.set_kind("tint" if on else "plain")
 
     def toggle_tracker(self):
+        from .riot import tracker_app_installed
         if self.guard_busy():
             return
         settings = self.store.read()["settings"]
         turning_on = not settings.get("stats_overlay", False)
-        if turning_on and not (settings.get("tracker_path") or self.tracker_available()):
-            return self.tracker_setup(turn_on_after=True)
+        if turning_on:
+            have_overwolf = bool(settings.get("tracker_path")) or self.tracker_available()
+            if not (have_overwolf and tracker_app_installed()):   # scan first; if missing, offer the install link
+                return self.tracker_setup(turn_on_after=True)
         self.store.set_stats_overlay(turning_on)
         self.show_tracker_state()
         self.notice("Stats overlay " + ("on" if turning_on else "off"),
@@ -625,6 +628,12 @@ class App(tk.Tk):
         current = self.store.read()["settings"].get("tracker_path", "")
         sheet = Sheet(self, "Stats overlay setup", width=580)
         sheet.heading("Stats overlay setup")
+        from .riot import discover_tracker, tracker_app_installed as app_installed
+        if not discover_tracker() and not current:
+            sheet.text("Not found on this PC: Overwolf and the Tracker app.", color=T.FG)
+        elif not app_installed():
+            sheet.text("Overwolf is installed, but the Tracker app isn't. Install it with the button below.",
+                       color=T.FG)
         sheet.text("The stats overlay is the Tracker app from Tracker Network. It runs inside Overwolf, a free "
                    "program made by someone else. They aren't included here, so you install them once:", small=True)
         sheet.text("1.  Click Download Tracker. A page opens in your browser: install the app (it installs "
@@ -647,6 +656,9 @@ class App(tk.Tk):
                     return
             valid_tracker(path)
             self.store.set_tracker_path(str(path))
+            if not app_installed():
+                raise UserError("Overwolf was found, but the Tracker app isn't installed in it yet. "
+                                "Click Download Tracker, install it, then try again.")
             if turn_on_after:
                 self.store.set_stats_overlay(True)
                 self.show_tracker_state()

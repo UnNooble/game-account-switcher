@@ -338,6 +338,10 @@ class Engine:
             if not path:
                 raise UserError("The stats overlay is on, but Overwolf wasn't found. "
                                 "Use ··· → Stats overlay setup to install it.")
+            from .riot import tracker_app_installed
+            if not tracker_app_installed():
+                raise UserError("The stats overlay is on, but the Tracker app isn't installed in Overwolf. "
+                                "Use ··· → Stats overlay setup to install it.")
             self.riot.start_tracker(path)
         except UserError as exc:
             self.notify("warning", str(exc))

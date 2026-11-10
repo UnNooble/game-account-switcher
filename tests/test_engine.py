@@ -725,7 +725,8 @@ def test_deceive_path_must_look_like_deceive(tmp_path):
             valid_deceive(bad)
 
 
-def test_stats_overlay_starts_overwolf_only_when_on(env):
+def test_stats_overlay_starts_overwolf_only_when_on(env, monkeypatch):
+    monkeypatch.setattr("switcher.riot.tracker_app_installed", lambda: True)
     a = add(env, "Main", A)
     env.engine.run(a)
     assert getattr(env.riot, "tracker_started", []) == []          # off by default
@@ -765,3 +766,21 @@ def test_tracker_is_opened_by_its_app_id(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append(cmd))
     riot_mod.RiotClient.start_tracker(object(), str(exe))
     assert calls == [[str(exe.resolve()), "-launchapp", riot_mod.TRACKER_APP_ID]]
+
+
+def test_stats_overlay_warns_when_tracker_app_missing(env, monkeypatch):
+    monkeypatch.setattr("switcher.riot.tracker_app_installed", lambda: False)
+    a = add(env, "Main", A)
+    env.store.set_tracker_path("C:/x/OverwolfLauncher.exe")
+    env.store.set_stats_overlay(True)
+    env.engine.run(a)
+    assert env.riot.valorant and getattr(env.riot, "tracker_started", []) == []
+    assert any(k == "warning" and "Tracker app" in d for k, d in env.events)
+
+
+def test_tracker_app_detection_looks_for_its_folder(tmp_path, monkeypatch):
+    from switcher.riot import tracker_app_installed, TRACKER_APP_ID
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert tracker_app_installed() is False
+    (tmp_path / "Overwolf" / "Extensions" / TRACKER_APP_ID).mkdir(parents=True)
+    assert tracker_app_installed() is True
