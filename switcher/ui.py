@@ -777,12 +777,12 @@ class App(tk.Tk):
         method = data.get("method") or ""
         title = {"email": "Check your email", "sms": "Check your texts", "authenticator": "Authenticator code",
                  "mobile": "Approve on Riot Mobile"}.get(method, "Approve on Riot Mobile" if mobile else "Verification code")
-        sheet = Sheet(self, "Verification", width=470, on_top=True)
+        sheet = Sheet(self, "Verification", width=520, on_top=True)
         sheet.heading(title)
         if data.get("destination"):
             sheet.text(data["destination"], color=T.FG)      # e.g. j***@gmail.com: which inbox to look in
         sheet.text(data.get("message", "Enter the code Riot just sent you."))
-        code = sheet.field("Code from the Riot Mobile app or your email" if mobile else "Code", size=20, center=True)
+        code = sheet.field("Or type a code" if mobile else "Code", size=20, center=True)
         sheet.text("Typed here, sent straight to Riot. Closing this box lets you finish in the Riot window instead.",
                    small=True)
 
@@ -793,8 +793,9 @@ class App(tk.Tk):
             return value
 
         if mobile:
-            sheet.buttons("Submit Code", submit, secondary="Email me a code instead", secondary_value="__email__",
-                          left=("I approved it", lambda: sheet.close("")))
+            # Two buttons in the row, the email option as a small link underneath, so nothing gets squeezed.
+            sheet.buttons("Submit Code", submit, secondary="I approved it", secondary_value="",
+                          left=("Email me a code instead", lambda: sheet.close("__email__")))
         else:
             sheet.buttons("Submit Code", submit, secondary=None)
         return sheet.show()
