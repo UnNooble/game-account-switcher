@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.9.2
+- The app now checks for updates every time it opens (before: once a day). If there's a newer version, the banner shows; if not, nothing changes.
+
 ## 3.9.1
 - Cleaner 2FA box: wider, two buttons in the main row (*I approved it* and *Submit Code*), and *Email me a code instead* as a small link underneath.
 

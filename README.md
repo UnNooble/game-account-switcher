@@ -37,7 +37,7 @@ While the repository is private, only people you've added as collaborators can o
   [Deceive](https://github.com/molenzwiebel/Deceive), a separate free open-source program that you download
   once (the app opens its official download page and finds the file for you). It is unofficial and can break
   when Riot changes its chat.
-- **Update notice.** A banner appears when a newer release is on GitHub (checked at most once a day; can be turned off).
+- **Update notice.** A banner appears when a newer release is on GitHub (checked each time the app opens; can be turned off in ···).
 - **Per-account desktop shortcuts** that switch and launch in one double-click.
 - **Crash-safe.** File swaps are journaled and restored automatically after a crash or power loss.
 

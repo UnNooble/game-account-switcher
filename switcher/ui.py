@@ -55,7 +55,7 @@ class App(tk.Tk):
         style_titlebar(self)
         self.refresh()
         self.after(100, self.poll)
-        self.after(2500, self.auto_update_check)
+        self.after(1500, self.auto_update_check)
         if autoplay:
             profile = self.store.get(autoplay)
             if profile:

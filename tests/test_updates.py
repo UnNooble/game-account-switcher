@@ -54,7 +54,7 @@ def test_settings_roundtrip_and_schedule(tmp_path):
     s = Settings(tmp_path)
     assert s.read() == {"auto": True, "last_check": 0.0} and s.due(now=1e9)
     s.write(last_check=1000.0)
-    assert not s.due(now=1000.0 + 3600) and s.due(now=1000.0 + updates.CHECK_EVERY)
+    assert s.due(now=1000.0 + 1)                     # checks on every app start
     s.write(auto=False)
     assert not s.due(now=1e12)
     (tmp_path / "update.json").write_text("{broken")

@@ -21,7 +21,6 @@ REPO = "UnNooble/game-account-switcher"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 PAGE_PREFIX = f"https://github.com/{REPO}/"
 RELEASES_URL = PAGE_PREFIX + "releases/latest"
-CHECK_EVERY = 24 * 3600
 
 
 @dataclass
@@ -89,8 +88,8 @@ class Settings:
             pass
 
     def due(self, now=None) -> bool:
-        data = self.read()
-        return data["auto"] and (now or time.time()) - data["last_check"] >= CHECK_EVERY
+        """Check every time the app opens, unless the user turned the automatic check off."""
+        return self.read()["auto"]
 
 
 def check_in_background(deliver, check_fn=check):
