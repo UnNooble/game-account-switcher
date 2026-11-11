@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.9.1
+- Cleaner 2FA box: wider, two buttons in the main row (*I approved it* and *Submit Code*), and *Email me a code instead* as a small link underneath.
+
 ## 3.9.0
 - Stats overlay: a second switch at the top. When it's on, the app opens the Valorant Tracker app (through Overwolf) with the game so its overlay shows in-game. Overwolf and the Tracker app are separate free programs: the first time, the app opens the official download page and then finds them for you. ··· → *Stats overlay setup* repeats this.
 - The taskbar now shows the app's own icon instead of the Python one.
