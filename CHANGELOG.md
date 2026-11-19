@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.10.0
 - New look: a tactical HUD style. Panels and buttons have cut corners, titles, names and buttons use the
   Chakra Petch font (bundled), and the account you used last stands out with a red edge and a red-tinted card.
 - Animations: buttons fade on hover and shrink with a flash of light when clicked, cards fade when you point at
