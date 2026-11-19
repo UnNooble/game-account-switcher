@@ -154,7 +154,7 @@ def test_click_plays_and_drag_reorders(app, monkeypatch):
     played = []
     monkeypatch.setattr(window, "launch", lambda p: played.append(p["label"]))
     first = window._card_list[0][0]
-    x, y = first.winfo_rootx() + 30, first.winfo_rooty() + 10
+    x, y = first.winfo_rootx() + 300, first.winfo_rooty() + 10   # on the text, not the icon
 
     class E:   # a minimal pointer event
         def __init__(self, y): self.x_root, self.y_root = x, y
@@ -227,3 +227,67 @@ def test_tidy_waits_for_the_game_and_can_be_turned_off(app, monkeypatch):
     monkeypatch.setattr(system, "game_running", lambda: True)
     window.tidy_after_launch()
     assert calls == [] and store.read()["settings"]["tidy_after_launch"] is False
+
+
+def _pointer(card, y):
+    class E:
+        x_root, y_root = card.winfo_rootx() + 50, y
+    return E()
+
+
+def test_drag_near_the_top_does_not_jump_the_list(app):
+    window, store = app
+    for n in ("A", "B", "C"):
+        store.add(n)
+    window.deiconify()
+    window.refresh()
+    window.update()
+    card, p = window._card_list[0]
+    top = card.winfo_rooty() + 4
+    window._drag_start(card, p, _pointer(card, top))
+    for dy in (10, 14, 18, 22, 26):
+        window._drag_move(_pointer(card, top + dy))
+        window.update()
+        assert window.canvas.canvasy(0) == 0
+    window._drag_end(_pointer(card, top + 26))
+    assert [x["label"] for x in store.read()["profiles"]] == ["A", "B", "C"]
+
+
+def test_held_card_moves_live_and_hover_pauses(app):
+    from switcher.widgets import Card
+    window, store = app
+    for n in ("A", "B", "C"):
+        store.add(n)
+    window.deiconify()
+    window.refresh()
+    window.update()
+    card, p = window._card_list[0]
+    y = card.winfo_rooty() + 10
+    window._drag_start(card, p, _pointer(card, y))
+    window._drag_move(_pointer(card, y + 20))
+    window._drag_move(_pointer(card, window._card_list[1][0].winfo_rooty() + window._card_list[1][0].winfo_height()))
+    window.update()
+    assert Card.frozen and card.outline
+    on_screen = [q["label"] for c, q in sorted(window._card_list, key=lambda cp: cp[0].winfo_y())]
+    assert on_screen == ["B", "A", "C"]                       # moved before letting go
+    window._drag_end(_pointer(card, y + 200))
+    assert not Card.frozen
+    assert [x["label"] for x in store.read()["profiles"]] == ["B", "A", "C"]
+
+
+def test_clicking_the_icon_opens_the_picker_and_picks_apply_at_once(app, monkeypatch):
+    from switcher.widgets import Avatar, Sheet
+    window, store = app
+    pid = store.add("Main")
+    window.refresh()
+    window.update()
+    played, opened = [], []
+    monkeypatch.setattr(window, "launch", lambda q: played.append(q))
+    monkeypatch.setattr(Sheet, "show", lambda self: opened.append(self) or self.close())
+    card = window._card_list[0][0]
+    avatar = next(w for w in card.inner.winfo_children() if isinstance(w, Avatar))
+    avatar.event_generate("<Button-1>", x=3, y=3)
+    window.update()
+    assert opened and not played
+    store.update(pid, icon="glyph:star", color="#3ddc97")       # what a click on a tile does
+    assert store.get(pid)["icon"] == "glyph:star"

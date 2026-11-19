@@ -203,6 +203,8 @@ class App(tk.Tk):
         for w in self.cards.winfo_children():
             w.destroy()
         self._card_list = []
+        self._drag = None
+        Card.frozen = False          # never leave hover paused if a drag was interrupted
         data = self.store.read()
         # The one orchestrated moment: cards sweep in, one after another, only when the window first opens.
         intro, self._intro_pending = getattr(self, "_intro_pending", True), False
@@ -300,7 +302,9 @@ class App(tk.Tk):
         play.pack(side="right", padx=(T.px(8), T.px(10)))
         card.update_idletasks()
         card.track_hover(fill, hover)
-        self.bind_drag(card, p, skip={more, play})
+        avatar.configure(cursor="hand2")
+        avatar.bind("<Button-1>", lambda e: self.icon_sheet(p))
+        self.bind_drag(card, p, skip={more, play, avatar})
         return card
 
     def avatar(self, parent, p, active, size):
@@ -334,15 +338,18 @@ class App(tk.Tk):
         bind_all(card)
 
     def _drag_start(self, card, p, event):
-        self._drag = {"card": card, "p": p, "y": event.y_root, "on": False, "index": None, "line": None}
+        self._drag = {"card": card, "p": p, "y": event.y_root, "on": False, "scroll": None}
 
-    def _drag_target(self, y_root):
-        for i, (card, _p) in enumerate(self._card_list):
-            if y_root < card.winfo_rooty() + card.winfo_height() // 2:
-                return i
-        return len(self._card_list)
+    @staticmethod
+    def _middle(card):
+        return card.winfo_rooty() + card.winfo_height() // 2
+
+    def _list_scrolls(self):
+        box = self.canvas.bbox("all")
+        return bool(box) and box[3] - box[1] > self.canvas.winfo_height()
 
     def _drag_move(self, event):
+        """The held card moves through the list as you drag: passing the middle of a neighbor swaps the two."""
         d = self._drag
         if not d:
             return
@@ -350,38 +357,70 @@ class App(tk.Tk):
             if abs(event.y_root - d["y"]) < T.px(8) or self.query or len(self._card_list) < 2 or self.busy():
                 return
             d["on"] = True
-            d["line"] = tk.Frame(self.cards, bg=T.RED, height=max(2, T.px(3)))
-            d["card"].configure(cursor="fleur")
-        top, bottom = self.canvas.winfo_rooty(), self.canvas.winfo_rooty() + self.canvas.winfo_height()
-        if event.y_root < top + T.px(30):
-            self.canvas.yview_scroll(-1, "units")
-        elif event.y_root > bottom - T.px(30):
-            self.canvas.yview_scroll(1, "units")
-        d["index"] = i = self._drag_target(event.y_root)
-        cards = [c for c, _ in self._card_list]
-        if i < len(cards):
-            y = cards[i].winfo_y() - T.px(7)
-        else:
-            y = cards[-1].winfo_y() + cards[-1].winfo_height() + T.px(2)
-        d["line"].place(x=0, y=max(0, y), relwidth=1)
-        d["line"].lift()
+            d["order"] = [c for c, _ in self._card_list]
+            Card.frozen = True
+            for c in d["order"]:
+                if c is not d["card"] and c._hover_on:
+                    c._hover_on = False
+                    c.set_fill(c._base)
+            d["card"].set_held(True)
+            for w in (d["card"], *d["card"].inner.winfo_children()):
+                try:
+                    w.configure(cursor="fleur")
+                except tk.TclError:
+                    pass
+        d["pointer"] = event.y_root
+        order, me = d["order"], d["card"]
+        moved = True
+        while moved:
+            moved = False
+            i = order.index(me)
+            if i > 0 and event.y_root < self._middle(order[i - 1]):
+                me.pack_configure(before=order[i - 1])
+                order[i - 1], order[i] = order[i], order[i - 1]
+                moved = True
+            elif i < len(order) - 1 and event.y_root > self._middle(order[i + 1]):
+                me.pack_configure(after=order[i + 1])
+                order[i + 1], order[i] = order[i], order[i + 1]
+                moved = True
+            if moved:
+                self.cards.update_idletasks()   # new positions, before comparing with the next neighbor
+        self._drag_autoscroll()
+
+    def _drag_autoscroll(self):
+        """Scroll while the pointer rests near the top or bottom, but only if the list is taller than the window."""
+        d = self._drag
+        if not d or not d["on"] or d["scroll"] is not None or not self._list_scrolls():
+            return
+        top = self.canvas.winfo_rooty()
+        bottom = top + self.canvas.winfo_height()
+        edge = T.px(36)
+        step = -1 if d["pointer"] < top + edge else (1 if d["pointer"] > bottom - edge else 0)
+        if step:
+            self.canvas.yview_scroll(step, "units")
+
+            def again():
+                if self._drag is d:
+                    d["scroll"] = None
+                    self._drag_autoscroll()
+
+            d["scroll"] = self.after(60, again)
 
     def _drag_end(self, event):
         d, self._drag = self._drag, None
         if not d:
             return
         if not d["on"]:
-            inside = d["card"].winfo_containing(event.x_root, event.y_root)
-            if inside is not None and str(inside).startswith(str(d["card"])):
+            c = d["card"]   # released on the same card (by its position, not by whatever window is on top)
+            if (c.winfo_rootx() <= event.x_root < c.winfo_rootx() + c.winfo_width()
+                    and c.winfo_rooty() <= event.y_root < c.winfo_rooty() + c.winfo_height()):
                 self.launch(d["p"])
             return
-        ids = [p["id"] for _, p in self._card_list]
-        old = ids.index(d["p"]["id"])
-        new = d["index"] if d["index"] is not None else old
-        if new > old:
-            new -= 1
-        ids.insert(new, ids.pop(old))
-        self.store.reorder(ids)
+        if d["scroll"] is not None:
+            self.after_cancel(d["scroll"])
+        Card.frozen = False
+        by_card = {c: p["id"] for c, p in self._card_list}
+        self.store.reorder([by_card[c] for c in d["order"]])
         self.refresh()
 
     def menu(self, p, anchor):
@@ -546,9 +585,11 @@ class App(tk.Tk):
 
     def icon_sheet(self, p):
         """Pick a letter, an emblem or your own picture, and a color, for one account."""
+        if self.busy():
+            return
         sheet = Sheet(self, "Account icon", width=520)
         sheet.heading("Icon for " + p["label"])
-        sheet.text("Pick an emblem and a color, or use your own picture.")
+        sheet.text("Click an emblem or a color. It changes right away.")
         state = {"icon": p.get("icon") or "letter", "color": p.get("color") or "", "upload": None}
         grid = tk.Frame(sheet.body, bg=T.SHEET)
         grid.pack(anchor="w", pady=(T.px(4), T.px(10)))
@@ -559,9 +600,6 @@ class App(tk.Tk):
 
         def preview(icon):
             q = dict(p, icon=icon, color=state["color"])
-            if icon == "custom" and state["upload"] is not None:
-                fill, mark = icons.badge_colors(q, False)
-                return lambda parent: Avatar(parent, "", fill, size=44, fg=mark, picture=state["upload"])
             return lambda parent: self.avatar(parent, q, False, 44)
 
         def tile(parent, make, selected, on_pick, column, row):
@@ -578,7 +616,7 @@ class App(tk.Tk):
                 for w in holder.winfo_children():
                     w.destroy()
             choices = ["letter"] + ["glyph:" + name for name in icons.GLYPHS]
-            if state["upload"] is not None or p.get("icon") == "custom":
+            if icons.custom_path(self.store.root, p["id"]).exists():
                 choices.append("custom")
             for n, icon in enumerate(choices):
                 tile(grid, preview(icon), state["icon"] == icon, lambda i=icon: pick(icon=i), n % 7, n // 7)
@@ -589,7 +627,9 @@ class App(tk.Tk):
 
         def pick(**change):
             state.update(change)
+            self.store.update(p["id"], icon=state["icon"], color=state["color"])
             draw()
+            self.refresh()
 
         def upload():
             path = filedialog.askopenfilename(parent=sheet, title="Choose a picture",
@@ -597,7 +637,7 @@ class App(tk.Tk):
             if not path:
                 return
             try:
-                state["upload"] = icons.read_picture(path)
+                icons.save_picture(icons.read_picture(path), self.store.root, p["id"])
             except UserError as e:
                 sheet.show_error(str(e))
                 return
@@ -606,16 +646,8 @@ class App(tk.Tk):
         Pill(actions, "Upload picture\u2026", upload, kind="plain", height=32, padx=16).pack(side="left")
         draw()
 
-        def save():
-            if state["icon"] == "custom" and state["upload"] is not None:
-                icons.save_picture(state["upload"], self.store.root, p["id"])
-            elif state["icon"] != "custom":
-                icons.remove_picture(self.store.root, p["id"])
-            self.store.update(p["id"], icon=state["icon"], color=state["color"])
-
-        sheet.buttons("Save", save)
-        if sheet.show():
-            self.refresh()
+        sheet.buttons("Done", secondary=None)
+        sheet.show()
 
     def delete(self, p):
         if self.ask_yes_no(f"Remove {p['label']}?",

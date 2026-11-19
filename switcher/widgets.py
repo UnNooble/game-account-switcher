@@ -483,6 +483,7 @@ class Card(tk.Canvas):
         self._job = None
         self._hover_on = False
         self._intro = False
+        self.outline = None
         self.bind("<Configure>", self._on_resize)
         self.inner.bind("<Configure>", self._on_inner)
 
@@ -508,9 +509,18 @@ class Card(tk.Canvas):
             if w > 4 and h > 4:
                 back = self.cget("bg")
                 stripe = self.stripe and (T.blend(back, self.stripe[0], fade), self.stripe[1])
-                self._shape.draw(w, h, self.cut, self.fill, stripe=stripe)
+                self._shape.draw(w, h, self.cut, self.fill, self.outline, max(1, T.px(2)) if self.outline else 0,
+                                 stripe=stripe)
         except tk.TclError:
             pass
+
+    # -- while a card is being dragged, no card reacts to hover (the pointer crosses all of them)
+    frozen = False
+
+    def set_held(self, held):
+        """The look of a card you're dragging: lighter, with a red outline."""
+        self.outline = T.RED if held else None
+        self.set_fill(self._hover_color if held else self._base)
 
     # -- color changes (hover highlight, intro): the card and its children's backgrounds move together
     def set_fill(self, color, fade=1.0):
@@ -544,7 +554,7 @@ class Card(tk.Canvas):
         self._base, self._hover_color = base, hover
 
         def enter(_e=None):
-            if not self._hover_on and not self._intro:
+            if not self._hover_on and not self._intro and not Card.frozen:
                 self._hover_on = True
                 self._fade_fill(self._hover_color)
 
@@ -559,7 +569,7 @@ class Card(tk.Canvas):
                 under = self.winfo_containing(x, y)
                 name = str(under) if under is not None else ""
                 inside = name == str(self) or name.startswith(str(self) + ".")
-                if not inside and self._hover_on:
+                if not inside and self._hover_on and not Card.frozen:
                     self._hover_on = False
                     self._fade_fill(self._base, 220)
             except (tk.TclError, KeyError):
