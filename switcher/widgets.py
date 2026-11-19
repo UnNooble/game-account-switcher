@@ -1,7 +1,12 @@
-"""Custom widgets for the rounded, Apple-like look (Tkinter has none of these built in).
+"""Custom widgets for the tactical HUD look (Tkinter has none of these built in).
 
-Shapes are drawn as smooth, supersampled images with Pillow; if Pillow is missing they fall back to
-plain canvas polygons, so the app still works (just with rougher corners).
+Shapes are panels with two cut corners (top-left and bottom-right), drawn as smooth supersampled images with
+Pillow; without Pillow they fall back to plain canvas polygons, so the app still works.
+
+Motion: buttons fade between colors, shrink a little and flash where you click; cards fade on hover and sweep
+in once when the window opens; the progress bar has a moving shine while working; dialogs and menus fade in.
+All of it can be turned off in the app (··· > Animations). The app has its own switch instead of
+following Windows' "Animation effects", which many gamers turn off for performance, not by choice.
 """
 from __future__ import annotations
 
@@ -18,53 +23,133 @@ except Exception:  # pragma: no cover - Pillow is a bundled dependency
     HAVE_PIL = False
 
 
+MOTION = True   # the app sets this from its own "Animations" setting (··· menu); on by default
+
+
+def animate(widget, name, duration_ms, step, done=None):
+    """Call step(t) with t going 0 -> 1 over duration_ms (about 60 times a second). A newer animation
+    with the same name on the same widget replaces the running one."""
+    jobs = widget.__dict__.setdefault("_anims", {})
+    if name in jobs:
+        try:
+            widget.after_cancel(jobs.pop(name))
+        except (tk.TclError, ValueError):
+            pass
+    if not MOTION or duration_ms <= 0:
+        try:
+            step(1.0)
+        except tk.TclError:
+            return
+        if done:
+            done()
+        return
+    start = time.perf_counter()
+
+    def tick():
+        t = min(1.0, (time.perf_counter() - start) * 1000.0 / duration_ms)
+        try:
+            step(t)
+        except tk.TclError:   # the widget was destroyed mid-animation
+            jobs.pop(name, None)
+            return
+        if t < 1.0:
+            jobs[name] = widget.after(16, tick)
+        else:
+            jobs.pop(name, None)
+            if done:
+                done()
+
+    tick()
+
+
+def _steps(t, n):
+    """Round an eased 0..1 value to n steps, so in-between frames repeat and come from the image cache."""
+    return round(T.ease_out(t) * n) / n
+
+
+def _rgb(color):
+    return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+
+
 # ---------------------------------------------------------------- shapes
 
 class Shape:
-    """A rounded rectangle living on a canvas. Re-drawn only when something about it changes."""
-    SS = 4  # supersampling factor for smooth edges
+    """A cut-corner panel living on a canvas. Rendered images are cached, so fades between a few colors are
+    cheap after the first pass."""
+    SS = 3          # supersampling factor for smooth edges
+    CACHE = 24
 
     def __init__(self, canvas, back=True):
         self.c, self.back = canvas, back
         self.item = None
         self.img = None
         self.key = None
+        self._cache = {}
 
     def hide(self):
         if self.item is not None:
             self.c.itemconfigure(self.item, state="hidden")
 
-    def draw(self, w, h, r, fill, outline=None, ow=0):
+    def draw(self, w, h, cut, fill, outline=None, ow=0, stripe=None, inset=0, flash=None):
+        """stripe = (color, width) band on the left edge;
+        inset = draw smaller by this many pixels on each side (pressed look);
+        flash = (x, y, radius, strength 0..1) a light burst clipped to the shape."""
         w, h = max(int(w), 2), max(int(h), 2)
-        r = max(0, min(int(r), w // 2, h // 2))
+        iw, ih = max(2, w - 2 * inset), max(2, h - 2 * inset)
+        cut = max(0, min(int(cut), iw // 2, ih // 2))
         if self.item is not None:
             self.c.itemconfigure(self.item, state="normal")
-        key = (w, h, r, fill, outline, ow)
+        key = (iw, ih, cut, fill, outline, ow, stripe, inset, flash)
         if key == self.key:
             return
         self.key = key
         if HAVE_PIL:
-            ss = self.SS
-            im = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
-            ImageDraw.Draw(im).rounded_rectangle(
-                [0, 0, w * ss - 1, h * ss - 1], radius=r * ss, fill=fill,
-                outline=outline if ow else None, width=ow * ss if ow else 0)
-            self.img = ImageTk.PhotoImage(im.resize((w, h), Image.LANCZOS), master=self.c)
+            img = self._cache.get(key) if flash is None else None
+            if img is None:
+                img = ImageTk.PhotoImage(self._render(iw, ih, cut, fill, outline, ow, stripe, flash),
+                                         master=self.c)
+                if flash is None:
+                    if len(self._cache) >= self.CACHE:
+                        self._cache.pop(next(iter(self._cache)))
+                    self._cache[key] = img
+            self.img = img
             if self.item is None:
-                self.item = self.c.create_image(0, 0, anchor="nw", image=self.img)
+                self.item = self.c.create_image(inset, inset, anchor="nw", image=img)
                 self._layer()
             else:
-                self.c.itemconfigure(self.item, image=self.img)
+                self.c.coords(self.item, inset, inset)
+                self.c.itemconfigure(self.item, image=img)
         else:
-            x2, y2 = w - 1, h - 1
-            pts = [r, 0, x2 - r, 0, x2, 0, x2, r, x2, y2 - r, x2, y2, x2 - r, y2,
-                   r, y2, 0, y2, 0, y2 - r, 0, r, 0, 0]
+            x2, y2 = inset + iw - 1, inset + ih - 1
+            x1, y1 = inset, inset
+            pts = [x1 + cut, y1, x2, y1, x2, y2 - cut, x2 - cut, y2, x1, y2, x1, y1 + cut]
             if self.item is None:
-                self.item = self.c.create_polygon(pts, smooth=True, fill=fill, outline=outline or fill)
+                self.item = self.c.create_polygon(pts, fill=fill, outline=outline or fill)
                 self._layer()
             else:
                 self.c.coords(self.item, *pts)
                 self.c.itemconfigure(self.item, fill=fill, outline=outline or fill)
+
+    def _render(self, w, h, cut, fill, outline, ow, stripe, flash):
+        ss = self.SS
+        W, H, c = w * ss, h * ss, cut * ss
+        pts = [(c, 0), (W - 1, 0), (W - 1, H - 1 - c), (W - 1 - c, H - 1), (0, H - 1), (0, c)]
+        im = Image.new("RGBA", (W, H), _rgb(fill) + (255,))
+        if flash:
+            fx, fy, fr, strength = flash
+            layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+            ImageDraw.Draw(layer).ellipse([(fx - fr) * ss, (fy - fr) * ss, (fx + fr) * ss, (fy + fr) * ss],
+                                          fill=(255, 255, 255, int(150 * strength)))
+            im = Image.alpha_composite(im, layer)
+        draw = ImageDraw.Draw(im)
+        if stripe:
+            draw.rectangle([0, 0, stripe[1] * ss, H], fill=stripe[0])
+        if outline and ow:
+            draw.polygon(pts, outline=outline, width=ow * ss * 2)   # half of it falls outside and is cut off
+        mask = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(mask).polygon(pts, fill=255)
+        im.putalpha(mask)
+        return im.resize((w, h), Image.BOX)
 
     def _layer(self):
         if self.back:
@@ -94,25 +179,28 @@ def style_titlebar(win):
 # ---------------------------------------------------------------- buttons
 
 class Pill(tk.Canvas):
-    """Fully rounded button. kind: primary | tint | plain | ghost."""
+    """Cut-corner button. kind: primary | outline | tint | plain | ghost.
+    (The name is historical: it used to be a rounded pill.)"""
 
     def __init__(self, parent, text, command=None, kind="plain", height=34, padx=18, square=False,
-                 width=None, align="center", radius=None, fg=None, bg=None):
+                 width=None, align="center", radius=None, fg=None, bg=None, display=True):
         self.kind, self.command, self.align = kind, command, align
-        self._radius, self._fg_override = radius, fg
+        self._cut_override, self._fg_override = radius, fg
         self._label, self._enabled, self._mode, self._text_item = text, True, "normal", None
-        self._font = T.font(10, True)
+        self._font = T.font(10, display=display) if display else T.font(10)
         self._pad = T.px(padx)
         self._height_px = T.px(height)
         self._square = square
         self._fixed_width = T.px(width) if width else None
         self._width_px = self._measure()
+        self._inset, self._flash, self.fade = 0, None, 1.0
         super().__init__(parent, width=self._width_px, height=self._height_px,
                          bg=bg or parent.cget("bg"), highlightthickness=0, bd=0, cursor="hand2")
         self._shape = Shape(self)
+        self._cur = self._target()            # (fill, text, outline) currently shown
         self.bind("<Enter>", lambda e: self._set_mode("hover"))
         self.bind("<Leave>", lambda e: self._set_mode("normal"))
-        self.bind("<ButtonPress-1>", lambda e: self._set_mode("press"))
+        self.bind("<ButtonPress-1>", self._pressed)
         self.bind("<ButtonRelease-1>", self._released)
         self._redraw()
 
@@ -124,28 +212,44 @@ class Pill(tk.Canvas):
         return self._font.measure(self._label) + 2 * self._pad
 
     def _palette(self):
-        """fill, hover fill, pressed fill, text, hover text"""
+        """{mode: (fill, text, outline)}"""
+        back = self.cget("bg")
+        fg = self._fg_override
         if self.kind == "primary":
-            return T.RED, T.RED_HOVER, T.RED_PRESS, "#ffffff", "#ffffff"
+            return {"normal": (T.RED, "#ffffff", None), "hover": (T.RED_HOVER, "#ffffff", None),
+                    "press": (T.RED_PRESS, "#ffffff", None)}
+        if self.kind == "outline":
+            return {"normal": (back, T.RED, T.RED), "hover": (T.RED, "#ffffff", T.RED),
+                    "press": (T.RED_PRESS, "#ffffff", T.RED_PRESS)}
         if self.kind == "tint":
-            return T.RED_TINT, T.RED, T.RED_PRESS, T.RED, "#ffffff"
+            return {"normal": (T.RED_TINT, T.RED, None), "hover": (T.RED, "#ffffff", None),
+                    "press": (T.RED_PRESS, "#ffffff", None)}
         if self.kind == "ghost":
-            return self.cget("bg"), T.CHIP, T.CHIP_PRESS, self._fg_override or T.MUTED, self._fg_override or T.FG
-        return T.CHIP, T.CHIP_HOVER, T.CHIP_PRESS, self._fg_override or T.FG, self._fg_override or T.FG
+            return {"normal": (back, fg or T.MUTED, None), "hover": (T.CHIP, fg or T.FG, None),
+                    "press": (T.CHIP_PRESS, fg or T.FG, None)}
+        return {"normal": (T.CHIP, fg or T.FG, None), "hover": (T.CHIP_HOVER, fg or T.FG, None),
+                "press": (T.CHIP_PRESS, fg or T.FG, None)}
+
+    def _target(self):
+        if not self._enabled:
+            return (self.cget("bg") if self.kind == "ghost" else T.CHIP_OFF, T.FAINT, None)
+        return self._palette()[self._mode]
+
+    def _cut(self):
+        if self._cut_override is not None:
+            return min(T.px(self._cut_override) // 2, self._height_px // 3)
+        return min(T.px(T.CUT_BUTTON), self._height_px // 3)
 
     def _redraw(self):
-        fill, hover, press, fg, hover_fg = self._palette()
-        if not self._enabled:
-            color = self.cget("bg") if self.kind == "ghost" else T.CHIP_OFF
-            text_color = T.FAINT
-        elif self._mode == "press":
-            color, text_color = press, hover_fg
-        elif self._mode == "hover":
-            color, text_color = hover, hover_fg
-        else:
-            color, text_color = fill, fg
+        fill, text_color, outline = self._cur
+        back = self.cget("bg")
+        if self.fade < 1.0:                     # intro: everything rises out of the backdrop color
+            fill = T.blend(back, fill, self.fade)
+            text_color = T.blend(back, text_color, self.fade)
+            outline = outline and T.blend(back, outline, self.fade)
         w, h = self._width_px, self._height_px
-        self._shape.draw(w, h, self._radius and T.px(self._radius) or h // 2, color)
+        self._shape.draw(w, h, self._cut(), fill, outline, max(1, T.px(1)) if outline else 0,
+                         inset=self._inset, flash=self._flash)
         x, anchor = (self._pad, "w") if self.align == "w" else (w // 2, "center")
         if self._text_item is None:
             self._text_item = self.create_text(x, h // 2, text=self._label, fill=text_color,
@@ -153,29 +257,67 @@ class Pill(tk.Canvas):
         else:
             self.coords(self._text_item, x, h // 2)
             self.itemconfigure(self._text_item, text=self._label, fill=text_color, anchor=anchor)
+        self.tag_raise(self._text_item)
+
+    def _go_to(self, duration=140):
+        """Fade from the colors on screen to the ones for the current mode."""
+        start, end = self._cur, self._target()
+
+        def step(t):
+            q = _steps(t, 5)
+            self._cur = tuple(None if b is None else (b if a is None else T.blend(a, b, q))
+                              for a, b in zip(start, end))
+            if t >= 1.0:
+                self._cur = end
+            self._redraw()
+
+        animate(self, "color", duration, step)
 
     def _set_mode(self, mode):
         if self._enabled and mode != self._mode:
             self._mode = mode
+            self._go_to(70 if mode == "press" else 140)
+
+    def _pressed(self, event):
+        if not self._enabled:
+            return
+        self._inset = max(1, T.px(2))
+        self._set_mode("press")
+        if self.kind != "ghost":
+            self._ripple(event.x, event.y)
+
+    def _ripple(self, x, y):
+        """A burst of light that spreads from the click point and fades."""
+        reach = max(self._width_px, self._height_px) * 1.1
+
+        def step(t):
+            e = T.ease_out(t)
+            self._flash = None if t >= 1.0 else (int(x), int(y), max(2, int(reach * e)), 1 - e)
             self._redraw()
+
+        animate(self, "ripple", 420, step)
 
     def _released(self, event):
         if not self._enabled:
             return
+        self._inset = 0
         inside = 0 <= event.x < self._width_px and 0 <= event.y < self._height_px
         self._set_mode("hover" if inside else "normal")
+        self._redraw()
         if inside and self.command:
             self.command()
 
     # -- public helpers
     def set_enabled(self, enabled):
         self._enabled = bool(enabled)
-        self._mode = "normal"
+        self._mode, self._inset = "normal", 0
         self.configure(cursor="hand2" if enabled else "arrow")
+        self._cur = self._target()
         self._redraw()
 
     def set_kind(self, kind):
         self.kind = kind
+        self._cur = self._target()
         self._redraw()
 
     def set_text(self, text):
@@ -185,31 +327,52 @@ class Pill(tk.Canvas):
         self._redraw()
 
     def set_backdrop(self, color):
-        """The color behind the rounded corners (the parent's background) changed."""
+        """The color behind the cut corners (the parent's background) changed."""
         self.configure(bg=color)
+        self._cur = self._target() if self._mode == "normal" else self._cur
+        self._redraw()
+
+    def set_fade(self, value):
+        self.fade = value
         self._redraw()
 
 
 class Avatar(tk.Canvas):
-    """Round badge with an initial, like a contact photo."""
+    """Cut-corner badge with an initial."""
 
     def __init__(self, parent, letter, fill, size=44, fg=None):
         s = T.px(size)
         super().__init__(parent, width=s, height=s, bg=parent.cget("bg"), highlightthickness=0, bd=0)
-        Shape(self).draw(s, s, s // 2, fill)
-        self.create_text(s // 2, s // 2, text=letter, fill=fg or T.FG, font=T.font(14, True))
+        self._size, self._fill, self._fg, self.fade = s, fill, fg or T.FG, 1.0
+        self._shape = Shape(self)          # kept on self: Tk drops images nothing in Python refers to
+        self._text = self.create_text(s // 2, s // 2, text=letter, font=T.font(15, display=True))
+        self._redraw()
+
+    def _redraw(self):
+        back = self.cget("bg")
+        self._shape.draw(self._size, self._size, T.px(T.CUT_SMALL + 2), T.blend(back, self._fill, self.fade))
+        self.itemconfigure(self._text, fill=T.blend(back, self._fg, self.fade))
+        self.tag_raise(self._text)
 
     def set_backdrop(self, color):
         self.configure(bg=color)
+        self._redraw()
+
+    def set_fade(self, value):
+        self.fade = value
+        self._redraw()
 
 
 class Progress(tk.Canvas):
-    """Slim rounded progress bar that glides to its new value."""
+    """Slim progress bar that glides to its new value, with a shine sweeping along it while working."""
 
     def __init__(self, parent, height=6):
         super().__init__(parent, height=T.px(height), bg=parent.cget("bg"), highlightthickness=0, bd=0)
-        self._track, self._bar = Shape(self), Shape(self, back=False)
+        self._track = self.create_rectangle(0, 0, 0, 0, width=0, fill=T.CHIP)
+        self._bar = self.create_rectangle(0, 0, 0, 0, width=0, fill=T.RED)
+        self._shine = self.create_rectangle(0, 0, 0, 0, width=0, fill=T.RED, state="hidden")
         self.value, self._target, self.color, self._job = 0.0, 0.0, T.RED, None
+        self._phase, self._shimmer_job = 0.0, None
         self.bind("<Configure>", lambda e: self._draw())
 
     def set(self, fraction, color=None, instant=False):
@@ -225,21 +388,42 @@ class Progress(tk.Canvas):
     def _step(self):
         self._job = None
         delta = self._target - self.value
-        self.value = self._target if abs(delta) < 0.004 else self.value + delta * 0.3
+        self.value = self._target if abs(delta) < 0.004 else self.value + delta * 0.25
         self._draw()
         if self.value != self._target:
-            self._job = self.after(30, self._step)
+            self._job = self.after(16, self._step)
+
+    def shimmer(self, on):
+        """Start or stop the moving shine (only drawn while there is a filled part to sweep over)."""
+        if on and MOTION and self._shimmer_job is None:
+            self._shimmer_tick()
+        elif not on and self._shimmer_job is not None:
+            self.after_cancel(self._shimmer_job)
+            self._shimmer_job = None
+            self.itemconfigure(self._shine, state="hidden")
+
+    def _shimmer_tick(self):
+        self._phase = (self._phase + 0.018) % 1.0
+        self._draw()
+        self._shimmer_job = self.after(16, self._shimmer_tick)
 
     def _draw(self):
         try:
             w, h = self.winfo_width(), self.winfo_height()
             if w < 4 or h < 2:
                 return
-            self._track.draw(w, h, h // 2, T.CHIP)
-            if self.value <= 0.001:
-                self._bar.hide()
+            self.coords(self._track, 0, 0, w, h)
+            filled = int(w * self.value)
+            self.coords(self._bar, 0, 0, filled, h)
+            self.itemconfigure(self._bar, fill=self.color, state="normal" if filled > 0 else "hidden")
+            if self._shimmer_job is not None and filled > 8:
+                size = max(T.px(40), filled // 4)
+                x = -size + (filled + size) * self._phase
+                self.coords(self._shine, max(0, x), 0, min(filled, x + size), h)
+                self.itemconfigure(self._shine, fill=T.blend(self.color, "#ffffff", 0.45),
+                                   state="normal" if x + size > 0 and x < filled else "hidden")
             else:
-                self._bar.draw(max(h, int(w * self.value)), h, h // 2, self.color)
+                self.itemconfigure(self._shine, state="hidden")
         except tk.TclError:
             pass
 
@@ -250,17 +434,21 @@ class Progress(tk.Canvas):
 # ---------------------------------------------------------------- containers
 
 class Card(tk.Canvas):
-    """Rounded surface that wraps a normal frame (`card.inner`) and grows with its contents."""
+    """Cut-corner surface that wraps a normal frame (`card.inner`) and grows with its contents.
+    stripe: a colored band on the left edge (the 'last used' and status look)."""
 
-    def __init__(self, parent, fill=T.CARD, radius=20, padx=20, pady=16):
+    def __init__(self, parent, fill=T.CARD, radius=None, padx=20, pady=16, stripe=None, cut=None):
         super().__init__(parent, bg=parent.cget("bg"), highlightthickness=0, bd=0, height=T.px(60))
-        self.fill, self.radius = fill.lower(), T.px(radius)
+        self.fill = fill.lower()
+        self.cut = T.px(cut if cut is not None else T.CUT_CARD)
         self.padx, self.pady = T.px(padx), T.px(pady)
+        self.stripe = (stripe, T.px(3)) if stripe else None
         self._shape = Shape(self)
         self.inner = tk.Frame(self, bg=fill)
         self._win = self.create_window(self.padx, self.pady, window=self.inner, anchor="nw")
         self._job = None
         self._hover_on = False
+        self._intro = False
         self.bind("<Configure>", self._on_resize)
         self.inner.bind("<Configure>", self._on_inner)
 
@@ -279,22 +467,24 @@ class Card(tk.Canvas):
             self.after_cancel(self._job)
         self._job = self.after(16, self._draw)
 
-    def _draw(self):
+    def _draw(self, fade=1.0):
         self._job = None
         try:
             w, h = self.winfo_width(), self.winfo_height()
             if w > 4 and h > 4:
-                self._shape.draw(w, h, self.radius, self.fill)
+                back = self.cget("bg")
+                stripe = self.stripe and (T.blend(back, self.stripe[0], fade), self.stripe[1])
+                self._shape.draw(w, h, self.cut, self.fill, stripe=stripe)
         except tk.TclError:
             pass
 
-    # -- hover highlight: the whole card changes shade while the pointer is anywhere inside it
-    def set_fill(self, color):
+    # -- color changes (hover highlight, intro): the card and its children's backgrounds move together
+    def set_fill(self, color, fade=1.0):
         color = color.lower()
         old, self.fill = self.fill, color
         self.inner.configure(bg=color)
         self._recolor(self.inner, old, color)
-        self._draw()
+        self._draw(fade)
 
     def _recolor(self, widget, old, new):
         for child in widget.winfo_children():
@@ -308,13 +498,21 @@ class Card(tk.Canvas):
                     pass
             self._recolor(child, old, new)
 
+    def _fade_fill(self, color, duration=160):
+        start = self.fill
+
+        def step(t):
+            self.set_fill(color if t >= 1.0 else T.blend(start, color, _steps(t, 5)))
+
+        animate(self, "fill", duration, step)
+
     def track_hover(self, base=T.CARD, hover=T.CARD_HOVER):
         self._base, self._hover_color = base, hover
 
         def enter(_e=None):
-            if not self._hover_on:
+            if not self._hover_on and not self._intro:
                 self._hover_on = True
-                self.set_fill(self._hover_color)
+                self._fade_fill(self._hover_color)
 
         def leave(_e=None):
             self.after(30, check)
@@ -329,7 +527,7 @@ class Card(tk.Canvas):
                 inside = name == str(self) or name.startswith(str(self) + ".")
                 if not inside and self._hover_on:
                     self._hover_on = False
-                    self.set_fill(self._base)
+                    self._fade_fill(self._base, 220)
             except (tk.TclError, KeyError):
                 return
 
@@ -354,15 +552,57 @@ class Card(tk.Canvas):
                     bind_all(child)
         bind_all(self)
 
+    def intro(self, delay_ms=0, rise=18, duration=420):
+        """Sweep in once: the card rises a few pixels while it and everything on it fade up from the backdrop."""
+        if not MOTION:
+            return
+        back, final_fill = self.cget("bg").lower(), self.fill
+        labels, fading = [], []
+
+        def collect(widget):
+            for child in widget.winfo_children():
+                if hasattr(child, "set_fade"):
+                    fading.append(child)
+                elif isinstance(child, tk.Label):
+                    labels.append((child, child.cget("fg")))
+                collect(child)
+
+        collect(self.inner)
+        info = self.pack_info()
+        pady = info.get("pady", 0)
+        top, bottom = (pady if isinstance(pady, (tuple, list)) else (pady, pady))
+        top, bottom = int(top), int(bottom)
+        lift = T.px(rise)
+        self._intro = True
+
+        def show(f):
+            self.set_fill(T.blend(back, final_fill, f) if f < 1.0 else final_fill, fade=f)
+            for label, fg in labels:
+                label.configure(fg=T.blend(self.fill, fg, f) if f < 1.0 else fg)
+            for widget in fading:
+                widget.set_fade(f)
+
+        def step(t):
+            e = T.ease_out(t)
+            self.pack_configure(pady=(top + int(lift * (1 - e)), bottom))
+            show(1.0 if t >= 1.0 else round(e * 8) / 8)
+
+        def done():
+            self._intro = False
+
+        show(0.0)
+        self.pack_configure(pady=(top + lift, bottom))
+        self.after(delay_ms, lambda: animate(self, "intro", duration, step, done))
+
 
 class Field(tk.Canvas):
-    """Rounded text box. Use .get() / .focus_set(); the real Entry is .entry."""
+    """Cut-corner text box. Use .get() / .focus_set(); the real Entry is .entry."""
 
     def __init__(self, parent, value="", secret=False, size=11, center=False):
         h = max(T.px(42), T.font(size).metrics("linespace") + T.px(18))
         super().__init__(parent, height=h, bg=parent.cget("bg"), highlightthickness=0, bd=0)
         self._shape, self._focus, self._height_px = Shape(self), False, h
-        self.entry = tk.Entry(self, bd=0, relief="flat", bg=T.FIELD, fg=T.FG, insertbackground=T.FG,
+        self.entry = tk.Entry(self, bd=0, relief="flat", bg=T.FIELD, fg=T.FG, insertbackground=T.RED,
                               font=T.font(size), show="●" if secret else "", highlightthickness=0,
                               justify="center" if center else "left")
         self.entry.insert(0, value)
@@ -384,8 +624,9 @@ class Field(tk.Canvas):
     def _draw(self):
         w = self.winfo_width()
         if w > 4:
-            self._shape.draw(w, self._height_px, T.px(12), T.FIELD,
-                             T.RED if self._focus else T.LINE, max(1, T.px(1)) + (1 if self._focus else 0))
+            self._shape.draw(w, self._height_px, T.px(T.CUT_BUTTON), T.FIELD,
+                             T.RED if self._focus else T.LINE, max(1, T.px(1)),
+                             stripe=(T.RED, T.px(3)) if self._focus else None)
 
     def get(self):
         return self.entry.get()
@@ -418,15 +659,16 @@ class Sheet(tk.Toplevel):
         self._pad = T.px(28)
         self._wrap = self._width - 2 * self._pad
         self._on_primary, self._primary, self._err, self._row, self._first = None, None, None, None, None
+        tk.Frame(self, bg=T.RED, height=max(2, T.px(2))).pack(fill="x", side="top")   # HUD edge
         self.body = tk.Frame(self, bg=T.SHEET)
-        self.body.pack(fill="both", expand=True, padx=self._pad, pady=(T.px(26), T.px(24)))
+        self.body.pack(fill="both", expand=True, padx=self._pad, pady=(T.px(24), T.px(24)))
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda e: self.close())
         self.bind("<Return>", lambda e: self._go())
 
     # -- content
     def heading(self, text):
-        tk.Label(self.body, text=text, font=T.font(17, True), fg=T.FG, bg=T.SHEET, anchor="w",
+        tk.Label(self.body, text=text, font=T.font(17, display=True), fg=T.FG, bg=T.SHEET, anchor="w",
                  justify="left", wraplength=self._wrap).pack(anchor="w", pady=(0, T.px(6)))
 
     def text(self, text, small=False, color=None):
@@ -455,7 +697,7 @@ class Sheet(tk.Toplevel):
         for left, right, color in items:
             row = tk.Frame(self.body, bg=T.SHEET)
             row.pack(fill="x", pady=T.px(4))
-            tk.Label(row, text=left, font=T.font(11, True), fg=T.FG, bg=T.SHEET, anchor="w").pack(side="left")
+            tk.Label(row, text=left, font=T.font(11, display=True), fg=T.FG, bg=T.SHEET, anchor="w").pack(side="left")
             tk.Label(row, text=right, font=T.font(10), fg=color or T.MUTED, bg=T.SHEET, anchor="e").pack(side="right")
 
     def buttons(self, primary, on_primary=None, secondary="Cancel", left=None, danger=False, secondary_value=None):
@@ -474,7 +716,8 @@ class Sheet(tk.Toplevel):
             if len(left[0]) > 18:   # long label: its own row underneath, so nothing gets squeezed
                 extra = tk.Frame(self.body, bg=T.SHEET)
                 extra.pack(fill="x", pady=(T.px(10), 0))
-                Pill(extra, left[0], left[1], kind="ghost", height=32, padx=4, fg=T.MUTED).pack(side="left")
+                Pill(extra, left[0], left[1], kind="ghost", height=32, padx=4, fg=T.MUTED, display=False).pack(
+                    side="left")
             else:
                 Pill(self._row, left[0], left[1], kind="ghost", height=36, padx=14).pack(side="left")
 
@@ -516,9 +759,20 @@ class Sheet(tk.Toplevel):
         y = self.app.winfo_rooty() + max(T.px(40), (self.app.winfo_height() - h) // 3)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         x, y = max(0, min(x, sw - w)), max(0, min(y, sh - h - T.px(40)))
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.geometry(f"{w}x{h}+{x}+{y + T.px(12)}")
         style_titlebar(self)
+        try:
+            self.attributes("-alpha", 0.0 if MOTION else 1.0)
+        except tk.TclError:
+            pass
         self.deiconify()
+
+        def step(t):   # fade in while settling 12px upward
+            e = T.ease_out(t)
+            self.attributes("-alpha", e)
+            self.geometry(f"+{x}+{y + int(T.px(12) * (1 - e))}")
+
+        animate(self, "open", 180, step)
         try:
             self.grab_set()
         except tk.TclError:
@@ -533,8 +787,8 @@ class Sheet(tk.Toplevel):
 # ---------------------------------------------------------------- popup menu
 
 class PopupMenu(tk.Toplevel):
-    """Soft rounded menu that opens under a button. items: (label, callback[, 'danger']) or None for a divider."""
-    KEY = "#010203"  # this color is made see-through so the corners are truly round
+    """Cut-corner menu that opens under a button. items: (label, callback[, 'danger']) or None for a divider."""
+    KEY = "#010203"  # this color is made see-through so the cut corners are truly cut
 
     def __init__(self, app, anchor, items, width=240):
         super().__init__(app)
@@ -552,7 +806,7 @@ class PopupMenu(tk.Toplevel):
         canvas = tk.Canvas(self, width=w, height=h, bg=self.KEY, highlightthickness=0, bd=0)
         canvas.pack()
         self._shape = Shape(canvas)
-        self._shape.draw(w, h, T.px(14), T.MENU, T.LINE, 1)
+        self._shape.draw(w, h, T.px(T.CUT_CARD), T.MENU, T.LINE, 1, stripe=(T.RED, T.px(2)))
         y = pad
         for item in items:
             if item is None:
@@ -564,7 +818,8 @@ class PopupMenu(tk.Toplevel):
             label, callback = item[0], item[1]
             danger = len(item) > 2 and item[2] == "danger"
             row = Pill(canvas, label, lambda cb=callback: self._pick(cb), kind="ghost", height=34,
-                       width=width - 16, align="w", radius=9, fg=T.RED if danger else T.FG, bg=T.MENU)
+                       width=width - 16, align="w", radius=9, fg=T.RED if danger else T.FG, bg=T.MENU,
+                       display=False)
             canvas.create_window(pad, y, window=row, anchor="nw")
             y += row_h
         self.update_idletasks()
@@ -577,8 +832,13 @@ class PopupMenu(tk.Toplevel):
         self.geometry(f"{w}x{h}+{x}+{top}")
         self.anchor = anchor
         self._armed = False
+        try:
+            self.attributes("-alpha", 0.0 if MOTION else 1.0)
+        except tk.TclError:
+            pass
         self.deiconify()
         self.lift()
+        animate(self, "open", 120, lambda t: self.attributes("-alpha", T.ease_out(t)))
         self.after(40, self._take_focus)
         self.after(250, self._arm)
         self.bind("<Escape>", lambda e: self.dismiss())

@@ -17,7 +17,9 @@ short, and don't make big changes without saying what they are.
 - `switcher/riotui.py` + `assets/riot_ui.ps1` fill Riot's sign-in window with Windows UI Automation (password goes over stdin only)
 - `switcher/vault.py` allowlisted login-file snapshots, DPAPI encryption, crash-recovery journal
 - `switcher/store.py` profiles.json; `credentials.py` Windows Credential Manager; `portable.py` encrypted backup/restore
-- `switcher/ui.py`, `widgets.py`, `theme.py` Tkinter UI (custom rounded widgets); `updates.py` GitHub update check
+- `switcher/ui.py`, `widgets.py`, `theme.py` Tkinter UI: tactical HUD look (cut-corner `Shape`s, Chakra Petch from
+  `assets/fonts`, loaded privately), animations via `widgets.animate()`, gated by the in-app Animations setting
+  (`widgets.MOTION`); `updates.py` GitHub update check
 - `tests/` engine tests use a simulated Riot Client (`FakeRiot` in `test_engine.py`); `test_ui_real.py` needs a real display
 
 ## Rules

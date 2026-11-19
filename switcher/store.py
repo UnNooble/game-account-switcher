@@ -42,7 +42,8 @@ def clean_label(value) -> str:
 
 def empty() -> dict:
     return {"version": SCHEMA, "profiles": [], "active": None, "settings": {"riot_path": "", "deceive_path": "", "appear_offline": False,
-                                                                       "tracker_path": "", "stats_overlay": False}}
+                                                                       "tracker_path": "", "stats_overlay": False,
+                                                                       "animations": True}}
 
 
 class Store:
@@ -89,6 +90,7 @@ class Store:
         tracker = raw.get("settings", {}).get("tracker_path", "")
         data["settings"]["tracker_path"] = tracker if isinstance(tracker, str) else ""
         data["settings"]["stats_overlay"] = bool(raw.get("settings", {}).get("stats_overlay", False))
+        data["settings"]["animations"] = bool(raw.get("settings", {}).get("animations", True))
         return data
 
     def write(self, data: dict) -> None:
@@ -146,6 +148,12 @@ class Store:
         with self.lock:
             data = self.read()
             data["settings"]["appear_offline"] = bool(value)
+            self.write(data)
+
+    def set_animations(self, value: bool) -> None:
+        with self.lock:
+            data = self.read()
+            data["settings"]["animations"] = bool(value)
             self.write(data)
 
     def set_stats_overlay(self, value: bool) -> None:

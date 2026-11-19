@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+- New look: a tactical HUD style. Panels and buttons have cut corners, titles, names and buttons use the
+  Chakra Petch font (bundled), and the account you used last stands out with a red edge and a red-tinted card.
+- Animations: buttons fade on hover and shrink with a flash of light when clicked, cards fade when you point at
+  them and sweep in when the app opens, the progress bar has a moving shine while switching, and dialogs and
+  menus fade in. Turn them off in ··· → *Animations*.
+- Fixed: the status text ("Starting…") now shows as soon as you click Play.
+- Fixed: the letter badges on account cards were missing their background.
+
 ## 3.9.2
 - The app now checks for updates every time it opens (before: once a day). If there's a newer version, the banner shows; if not, nothing changes.
 

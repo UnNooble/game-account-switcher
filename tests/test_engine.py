@@ -699,7 +699,8 @@ def test_appear_offline_starts_riot_through_deceive(env, tmp_path):
     assert env.riot.opened_with == ""                      # switch off: plays normally
 
 
-def test_appear_offline_without_deceive_explains_itself(env):
+def test_appear_offline_without_deceive_explains_itself(env, monkeypatch):
+    monkeypatch.setattr("switcher.riot.discover_deceive", lambda: "")   # ignore a real Deceive on this PC
     a = add(env, "Main", A)
     env.store.set_appear_offline(True)
     with pytest.raises(UserError, match="Deceive"):

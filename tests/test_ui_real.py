@@ -56,3 +56,61 @@ def test_menus_and_sheet_open_and_close(app):
     sheet.buttons("OK", lambda: box.get())
     window.after(100, sheet._go)
     assert sheet.show() == "x"
+
+
+def test_animations_setting_defaults_on_and_persists(app):
+    from switcher import widgets
+    window, store = app
+    assert store.read()["settings"]["animations"] is True
+    assert widgets.MOTION is True
+    window.toggle_animations()
+    assert widgets.MOTION is False and store.read()["settings"]["animations"] is False
+    window.toggle_animations()
+    assert widgets.MOTION is True and store.read()["settings"]["animations"] is True
+
+
+def test_animate_runs_over_time_and_is_instant_when_off(app):
+    import time
+    from switcher import widgets
+    window, _ = app
+    seen = []
+    widgets.animate(window, "t", 120, seen.append)
+    end = time.time() + 2
+    while seen[-1] < 1.0 and time.time() < end:
+        window.update()
+    assert seen[0] < 1.0 and seen[-1] == 1.0 and len(seen) > 2
+    widgets.MOTION = False
+    try:
+        seen.clear()
+        widgets.animate(window, "t", 120, seen.append)
+        assert seen == [1.0]
+    finally:
+        widgets.MOTION = True
+
+
+def test_buttons_press_and_cards_sweep_in(app):
+    import time
+    from switcher import theme as T
+    from switcher.widgets import Card, Pill
+    window, store = app
+    store.add("Main")
+    window.refresh()
+    window.update()
+    button = Pill(window.cards, "Play", kind="outline")
+    button.pack()
+    window.update()
+    button.event_generate("<Enter>")
+    button.event_generate("<ButtonPress-1>", x=5, y=5)
+    window.update()
+    assert button._inset > 0 and button._mode == "press"
+    button.event_generate("<ButtonRelease-1>", x=5, y=5)
+    assert button._inset == 0
+    card = Card(window.cards)
+    card.pack(fill="x")
+    window.update()
+    card.intro(0)
+    assert card.fill != T.CARD          # starts faded into the background
+    end = time.time() + 2
+    while card._intro and time.time() < end:
+        window.update()
+    assert card.fill == T.CARD

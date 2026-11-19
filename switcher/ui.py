@@ -15,6 +15,7 @@ from tkinter import filedialog
 from . import APP_NAME, VERSION, resource, updates, worker
 from . import theme as T
 from .errors import UserError
+from . import widgets
 from .widgets import Avatar, Card, Pill, Progress, PopupMenu, Sheet, style_titlebar
 
 STEPS = 5   # Check Riot, Sign in, Verify account, Start VALORANT, Playing
@@ -51,6 +52,7 @@ class App(tk.Tk):
         self.bind("<Configure>", lambda e: self.close_menu() if e.widget is self else None, add="+")
         self.bind_all("<ButtonPress>", self._any_click, add="+")
         self.bind_all("<MouseWheel>", self._wheel)
+        widgets.MOTION = self.store.read()["settings"].get("animations", True)
         self.build()
         style_titlebar(self)
         self.refresh()
@@ -105,7 +107,11 @@ class App(tk.Tk):
         pad = T.px(36)
         head = tk.Frame(self, bg=T.BG)
         head.pack(fill="x", padx=pad, pady=(T.px(32), 0))
-        tk.Label(head, text="Accounts", font=T.font(26, True), fg=T.FG, bg=T.BG).pack(side="left", anchor="n")
+        # The title is the one piece of type used as a visual element: a red signal bar and wide-set caps.
+        mark = tk.Canvas(head, width=T.px(6), height=T.px(30), bg=T.RED, highlightthickness=0, bd=0)
+        mark.pack(side="left", anchor="center", padx=(0, T.px(14)))
+        tk.Label(head, text="A C C O U N T S", font=T.font(24, display=True), fg=T.FG, bg=T.BG).pack(
+            side="left", anchor="center")
         self.more_btn = Pill(head, "···", self.main_menu, kind="plain", height=40, square=True)
         self.more_btn.pack(side="right", anchor="n")
         self.add_btn = Pill(head, "Add Account", self.add, kind="primary", height=40, padx=22)
@@ -123,12 +129,12 @@ class App(tk.Tk):
         self.show_offline_state()
         self.show_tracker_state()
 
-        tk.Label(self, text=f"Unofficial  ·  not endorsed by Riot Games  ·  v{VERSION}", font=T.font(8),
+        tk.Label(self, text=f"Unofficial, not endorsed by Riot Games.    Version {VERSION}", font=T.font(8),
                  fg=T.FAINT, bg=T.BG).pack(side="bottom", pady=(T.px(4), T.px(14)))
 
         self.body = tk.Frame(self, bg=T.BG)
         self.body.pack(fill="both", expand=True, padx=pad, pady=(T.px(22), T.px(10)))
-        self.update_bar = Card(self, fill=T.CARD, radius=18, padx=18, pady=10)
+        self.update_bar = Card(self, fill=T.CARD, padx=18, pady=10, stripe=T.GREEN)
         row = tk.Frame(self.update_bar.inner, bg=T.CARD)
         row.pack(fill="x")
         self.update_label = tk.Label(row, text="", font=T.font(10, True), fg=T.FG, bg=T.CARD, anchor="w")
@@ -143,10 +149,10 @@ class App(tk.Tk):
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(win, width=e.width))
 
         # status dock: hidden until something is happening
-        self.dock = Card(self, fill=T.CARD, radius=22, padx=22, pady=18)
+        self.dock = Card(self, fill=T.CARD, padx=22, pady=18, stripe=T.RED)
         top = tk.Frame(self.dock.inner, bg=T.CARD)
         top.pack(fill="x")
-        self.who = tk.Label(top, text="", font=T.font(13, True), fg=T.FG, bg=T.CARD, anchor="w")
+        self.who = tk.Label(top, text="", font=T.font(13, display=True), fg=T.FG, bg=T.CARD, anchor="w")
         self.who.pack(side="left")
         self.dock_btn = Pill(top, "Stop", self.stop, kind="plain", height=30, padx=16)
         self.dock_btn.pack(side="right")
@@ -167,51 +173,64 @@ class App(tk.Tk):
         for w in self.cards.winfo_children():
             w.destroy()
         data = self.store.read()
+        # The one orchestrated moment: cards sweep in, one after another, only when the window first opens.
+        intro, self._intro_pending = getattr(self, "_intro_pending", True), False
         if not data["profiles"]:
-            self.empty_state()
+            box = self.empty_state()
+            if intro:
+                box.intro(120)
             return
-        for p in data["profiles"]:
-            self.card(p, p["id"] == data["active"])
+        for i, p in enumerate(data["profiles"]):
+            card = self.card(p, p["id"] == data["active"])
+            if intro and i < 8:
+                card.intro(120 + 70 * i)
         self.canvas.yview_moveto(0)
 
     def empty_state(self):
-        box = Card(self.cards, radius=24, padx=30, pady=34)
+        box = Card(self.cards, padx=30, pady=34, stripe=T.RED)
         box.pack(fill="x", pady=(T.px(40), 0))
         inner = box.inner
-        tk.Label(inner, text="Add your first account", font=T.font(17, True), fg=T.FG, bg=T.CARD).pack()
+        tk.Label(inner, text="Add your first account", font=T.font(17, display=True), fg=T.FG, bg=T.CARD).pack()
         tk.Label(inner, text="Enter your Riot username and password once. After that, one click\n"
                              "switches to it and starts VALORANT.",
                  font=T.font(10), fg=T.MUTED, bg=T.CARD, justify="center").pack(pady=(8, 20))
         Pill(inner, "Add Account", self.add, kind="primary", height=40, padx=26).pack()
+        return box
 
     def card(self, p, active):
-        card = Card(self.cards, radius=20, padx=18, pady=14)
-        card.pack(fill="x", pady=(0, T.px(12)))
+        # The last-used account is the screen's one loud element: red edge stripe and a red-tinted panel.
+        fill, hover = (T.CARD_ACTIVE, T.CARD_ACTIVE_HOVER) if active else (T.CARD, T.CARD_HOVER)
+        card = Card(self.cards, fill=fill, padx=18, pady=14, stripe=T.RED if active else None)
+        card.pack(fill="x", pady=(0, T.px(10)))
         inner = card.inner
         letter = (p["label"][:1] or "?").upper()
         avatar = Avatar(inner, letter, T.RED_TINT if active else T.AVATAR, size=46, fg=T.RED if active else T.FG)
-        avatar.pack(side="left")
-        text = tk.Frame(inner, bg=T.CARD)
+        avatar.pack(side="left", padx=(T.px(4) if active else 0, 0))
+        text = tk.Frame(inner, bg=fill)
         text.pack(side="left", fill="x", expand=True, padx=(T.px(14), T.px(8)))
-        line = tk.Frame(text, bg=T.CARD)
+        line = tk.Frame(text, bg=fill)
         line.pack(anchor="w")
-        tk.Label(line, text=p["label"], font=T.font(13, True), fg=T.FG, bg=T.CARD).pack(side="left")
+        tk.Label(line, text=p["label"], font=T.font(14, display=True), fg=T.FG, bg=fill).pack(side="left")
         if active:
-            tk.Label(line, text="●  Last used", font=T.font(8), fg=T.GREEN, bg=T.CARD).pack(
+            tk.Label(line, text="●  Last used", font=T.font(8), fg=T.GREEN, bg=fill).pack(
                 side="left", padx=(T.px(10), 0))
-        sub = p["riot_id"] or "Not signed in yet"
+        details = tk.Frame(text, bg=fill)
+        details.pack(anchor="w", pady=(1, 0))
+        tk.Label(details, text=p["riot_id"] or "Not signed in yet", font=T.font(9), fg=T.MUTED, bg=fill,
+                 anchor="w").pack(side="left")
         if self.creds.has(p["id"]):
-            sub += "   ·   Auto sign-in"
-        tk.Label(text, text=sub, font=T.font(9), fg=T.MUTED, bg=T.CARD, anchor="w").pack(anchor="w", pady=(2, 0))
+            tk.Label(details, text="Auto sign-in", font=T.font(9), fg=T.FAINT, bg=fill).pack(
+                side="left", padx=(T.px(14), 0))
         more = Pill(inner, "···", None, kind="ghost", height=34, square=True)
         more.command = lambda b=more: self.menu(p, b)
         more.pack(side="right")
-        play = Pill(inner, "Play", lambda: self.launch(p), kind="tint", height=34, padx=22)
-        play.pack(side="right", padx=(T.px(8), T.px(12)))
+        play = Pill(inner, "Play  ▸", lambda: self.launch(p), kind="outline", height=34, padx=20)
+        play.pack(side="right", padx=(T.px(8), T.px(10)))
         card.update_idletasks()
-        card.track_hover()
+        card.track_hover(fill, hover)
         card.bind_click(lambda: self.launch(p), skip={more, play})
         card.configure(cursor="hand2")
+        return card
 
     def menu(self, p, anchor):
         if self.guard_busy():
@@ -242,6 +261,7 @@ class App(tk.Tk):
             ("Appear offline setup…", self.deceive_setup),
             ("Stats overlay setup…", self.tracker_setup),
             ("Open log file", self.open_log),
+            ("Animations: On" if widgets.MOTION else "Animations: Off", self.toggle_animations),
             None,
             ("Check for updates", self.check_updates_now),
             (("Automatic update check: On" if self.update_settings.read()["auto"]
@@ -678,6 +698,10 @@ class App(tk.Tk):
         self.update_manual = True
         updates.check_in_background(lambda r: self.update_events.put(r))
 
+    def toggle_animations(self):
+        widgets.MOTION = not widgets.MOTION
+        self.store.set_animations(widgets.MOTION)
+
     def toggle_auto_update(self):
         self.update_settings.write(auto=not self.update_settings.read()["auto"])
 
@@ -732,16 +756,18 @@ class App(tk.Tk):
 
     # ---------- status dock ----------
     def show_dock(self, title, message):
+        if not self.dock_visible:
+            self.dock.pack(side="bottom", fill="x", padx=T.px(36), pady=(0, T.px(10)), before=self.body)
+            self.dock_visible = True      # before set_message, which ignores messages while hidden
         self.who.configure(text=title)
         self.set_message(message, T.MUTED)
         self.bar.set(0, T.RED, instant=True)
+        self.bar.shimmer(True)
         self.dock_btn.set_text("Stop")
         self.dock_btn.set_enabled(True)
-        if not self.dock_visible:
-            self.dock.pack(side="bottom", fill="x", padx=T.px(36), pady=(0, T.px(10)), before=self.body)
-            self.dock_visible = True
 
     def hide_dock(self):
+        self.bar.shimmer(False)
         self.dock.pack_forget()
         self.dock_visible = False
 
@@ -825,6 +851,7 @@ class App(tk.Tk):
                     self.set_message(data, T.MUTED)
                 elif kind == "finished":
                     self.thread = self.cancel = None
+                    self.bar.shimmer(False)
                     self.add_btn.set_enabled(True)
                     self.more_btn.set_enabled(True)
                     self.dock_btn.set_text("Dismiss")

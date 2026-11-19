@@ -9,6 +9,7 @@ This app is built with, and ships, the following third-party software. Each keep
 | psutil | Finding and closing processes | BSD-3-Clause | https://github.com/giampaolo/psutil |
 | cryptography | Encryption of saved logins and backups | Apache-2.0 or BSD-3-Clause | https://github.com/pyca/cryptography |
 | Pillow | Drawing the rounded interface | HPND (MIT-CMU) | https://python-pillow.org |
+| Chakra Petch font | Titles, names and buttons | SIL Open Font License 1.1 (copy in `assets/fonts/OFL.txt`) | https://github.com/m4rc1e/Chakra-Petch |
 | Inno Setup | Building the installer | Inno Setup License | https://jrsoftware.org/isinfo.php |
 
 Not included: the optional "Appear offline" feature starts Deceive (https://github.com/molenzwiebel/Deceive,
