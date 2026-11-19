@@ -17,7 +17,7 @@ from . import theme as T
 from .errors import UserError
 from . import widgets
 from .tray import Tray
-from .widgets import Avatar, Card, Field, Pill, Progress, PopupMenu, Sheet, style_titlebar
+from .widgets import Avatar, Card, Field, Pill, Progress, PopupMenu, Shape, Sheet, style_titlebar
 
 STEPS = 5   # Check Riot, Sign in, Verify account, Start VALORANT, Playing
 SEARCH_FROM = 3   # show the search box once there are this many accounts
@@ -203,6 +203,11 @@ class App(tk.Tk):
         for w in self.cards.winfo_children():
             w.destroy()
         self._card_list = []
+        if self._drag and self._drag.get("ghost") is not None:   # a drag was interrupted: drop the floating copy
+            try:
+                self._drag["ghost"].destroy()
+            except tk.TclError:
+                pass
         self._drag = None
         Card.frozen = False          # never leave hover paused if a drag was interrupted
         data = self.store.read()
@@ -338,7 +343,7 @@ class App(tk.Tk):
         bind_all(card)
 
     def _drag_start(self, card, p, event):
-        self._drag = {"card": card, "p": p, "y": event.y_root, "on": False, "scroll": None}
+        self._drag = {"card": card, "p": p, "x": event.x_root, "y": event.y_root, "on": False, "scroll": None}
 
     @staticmethod
     def _middle(card):
@@ -348,38 +353,88 @@ class App(tk.Tk):
         box = self.canvas.bbox("all")
         return bool(box) and box[3] - box[1] > self.canvas.winfo_height()
 
+    # The card you drag lifts off as a floating copy (a small borderless window) that follows the pointer anywhere,
+    # like dragging a window. Its place in the list shows as an empty slot that moves as you drag; on release the
+    # copy glides into the slot. The real card stays where it is underneath the slot, so the mouse capture that
+    # Windows gives the pressed widget is never lost mid-drag.
+    def _lift_card(self, d):
+        card = d["card"]
+        x, y, w, h = card.winfo_rootx(), card.winfo_rooty(), card.winfo_width(), card.winfo_height()
+        d["offset"] = (d["x"] - x, d["y"] - y)
+        ghost = tk.Toplevel(self)
+        ghost.overrideredirect(True)
+        ghost.configure(bg=T.BG)
+        try:
+            ghost.attributes("-topmost", True)
+            ghost.attributes("-alpha", 0.93)
+        except tk.TclError:
+            pass
+        image = None
+        try:
+            from PIL import ImageDraw, ImageGrab, ImageTk
+            shot = ImageGrab.grab((x, y, x + w, y + h), all_screens=True).convert("RGB")
+            c, edge = T.px(T.CUT_CARD), max(2, T.px(2))
+            ImageDraw.Draw(shot).polygon([(c, 0), (w - 1, 0), (w - 1, h - 1 - c), (w - 1 - c, h - 1), (0, h - 1),
+                                          (0, c)], outline=T.RED, width=edge)
+            image = ImageTk.PhotoImage(shot, master=ghost)
+        except Exception:
+            image = None
+        if image is not None:
+            label = tk.Label(ghost, image=image, bd=0, highlightthickness=0, bg=T.BG)
+            label.image = image
+        else:   # no screenshot possible: a plain panel with the name still shows what you're moving
+            label = tk.Label(ghost, text=d["p"]["label"], font=T.font(14, display=True), fg=T.FG, bg=T.CARD_HOVER,
+                             highlightthickness=max(2, T.px(2)), highlightbackground=T.RED, anchor="w",
+                             padx=T.px(24))
+        label.pack(fill="both", expand=True)
+        ghost.geometry(f"{w}x{h}+{x}+{y}")
+        d["ghost"], d["size"] = ghost, (w, h)
+
+        slot = tk.Canvas(card, bg=card.cget("bg"), highlightthickness=0, bd=0)
+        slot.place(x=0, y=0, relwidth=1, relheight=1)
+        slot.tk.call("raise", slot._w)    # the widget itself (Canvas.lift would raise a drawing on it)
+        shape = Shape(slot)
+        slot.bind("<Configure>", lambda e: shape.draw(e.width, e.height, T.px(T.CUT_CARD),
+                                                      T.blend(T.BG, T.CARD, 0.35), T.LINE, max(1, T.px(1))))
+        d["slot"], d["slot_shape"] = slot, shape
+
     def _drag_move(self, event):
-        """The held card moves through the list as you drag: passing the middle of a neighbor swaps the two."""
+        """The floating copy follows the pointer; the slot moves to where the copy's middle is in the list."""
         d = self._drag
         if not d:
             return
         if not d["on"]:
-            if abs(event.y_root - d["y"]) < T.px(8) or self.query or len(self._card_list) < 2 or self.busy():
+            moved = max(abs(event.y_root - d["y"]), abs(event.x_root - d["x"]))
+            if moved < T.px(8) or self.query or len(self._card_list) < 2 or self.busy():
                 return
             d["on"] = True
             d["order"] = [c for c, _ in self._card_list]
             Card.frozen = True
             for c in d["order"]:
-                if c is not d["card"] and c._hover_on:
+                if c._hover_on:
                     c._hover_on = False
                     c.set_fill(c._base)
-            d["card"].set_held(True)
-            for w in (d["card"], *d["card"].inner.winfo_children()):
-                try:
-                    w.configure(cursor="fleur")
-                except tk.TclError:
-                    pass
+            self.update_idletasks()
+            self._lift_card(d)
+        ox, oy = d["offset"]
+        w, h = d["size"]
+        gx, gy = event.x_root - ox, event.y_root - oy
+        try:
+            d["ghost"].geometry(f"+{gx}+{gy}")
+        except tk.TclError:
+            pass
         d["pointer"] = event.y_root
+        middle = gy + h // 2
         order, me = d["order"], d["card"]
         moved = True
         while moved:
             moved = False
             i = order.index(me)
-            if i > 0 and event.y_root < self._middle(order[i - 1]):
+            if i > 0 and middle < self._middle(order[i - 1]):
                 me.pack_configure(before=order[i - 1])
                 order[i - 1], order[i] = order[i], order[i - 1]
                 moved = True
-            elif i < len(order) - 1 and event.y_root > self._middle(order[i + 1]):
+            elif i < len(order) - 1 and middle > self._middle(order[i + 1]):
                 me.pack_configure(after=order[i + 1])
                 order[i + 1], order[i] = order[i], order[i + 1]
                 moved = True
@@ -418,10 +473,30 @@ class App(tk.Tk):
             return
         if d["scroll"] is not None:
             self.after_cancel(d["scroll"])
-        Card.frozen = False
         by_card = {c: p["id"] for c, p in self._card_list}
         self.store.reorder([by_card[c] for c in d["order"]])
-        self.refresh()
+        ghost, card = d["ghost"], d["card"]
+        self.update_idletasks()
+        try:
+            sx, sy = ghost.winfo_rootx(), ghost.winfo_rooty()
+        except tk.TclError:
+            sx, sy = card.winfo_rootx(), card.winfo_rooty()
+        tx, ty = card.winfo_rootx(), card.winfo_rooty()
+
+        def glide(t):   # the floating copy settles into its slot
+            e = T.ease_out(t)
+            ghost.geometry(f"+{int(sx + (tx - sx) * e)}+{int(sy + (ty - sy) * e)}")
+
+        def settle():
+            for widget in (ghost, d["slot"]):
+                try:
+                    widget.destroy()
+                except tk.TclError:
+                    pass
+            Card.frozen = False
+            self.refresh()
+
+        widgets.animate(ghost, "glide", 170, glide, settle)
 
     def menu(self, p, anchor):
         if self.guard_busy():

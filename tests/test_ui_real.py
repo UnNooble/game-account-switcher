@@ -267,12 +267,36 @@ def test_held_card_moves_live_and_hover_pauses(app):
     window._drag_move(_pointer(card, y + 20))
     window._drag_move(_pointer(card, window._card_list[1][0].winfo_rooty() + window._card_list[1][0].winfo_height()))
     window.update()
-    assert Card.frozen and card.outline
+    ghost = window._drag["ghost"]
+    assert Card.frozen and ghost.winfo_exists() and window._drag["slot"].winfo_ismapped()
     on_screen = [q["label"] for c, q in sorted(window._card_list, key=lambda cp: cp[0].winfo_y())]
     assert on_screen == ["B", "A", "C"]                       # moved before letting go
     window._drag_end(_pointer(card, y + 200))
-    assert not Card.frozen
     assert [x["label"] for x in store.read()["profiles"]] == ["B", "A", "C"]
+    import time
+    end = time.time() + 2
+    while Card.frozen and time.time() < end:          # the floating copy glides into its slot, then goes away
+        window.update()
+    assert not Card.frozen and not ghost.winfo_exists()
+
+
+def test_floating_card_follows_the_pointer_sideways(app):
+    window, store = app
+    for n in ("A", "B"):
+        store.add(n)
+    window.deiconify()
+    window.refresh()
+    window.update()
+    card, p = window._card_list[0]
+    x, y = card.winfo_rootx() + 300, card.winfo_rooty() + 20
+
+    class E:
+        def __init__(self, dx, dy): self.x_root, self.y_root = x + dx, y + dy
+    window._drag_start(card, p, E(0, 0))
+    window._drag_move(E(120, 15))
+    window.update()
+    assert window._drag["ghost"].winfo_rootx() - card.winfo_rootx() == 120
+    window._drag_end(E(120, 15))
 
 
 def test_clicking_the_icon_opens_the_picker_and_picks_apply_at_once(app, monkeypatch):

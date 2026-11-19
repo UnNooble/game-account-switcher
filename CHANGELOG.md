@@ -11,8 +11,9 @@
 - Each card shows when you last played that account, and a small "Sign-in needed" note when Riot will ask you
   to sign in again.
 - Search box (from 3 accounts): finds accounts by nickname, Riot ID or Riot username.
-- Drag cards to put them in any order: the card you hold is outlined in red and moves through the list as you
-  drag. The list only scrolls if it's taller than the window.
+- Drag cards to put them in any order: the card lifts off and follows your mouse like a window, an empty slot
+  shows where it will land, and it glides into place when you let go. The list only scrolls if it's taller
+  than the window.
 
 ## 3.10.0
 - New look: a tactical HUD style. Panels and buttons have cut corners, titles, names and buttons use the
