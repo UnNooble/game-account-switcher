@@ -33,6 +33,7 @@ RED_HOVER = "#ff6472"
 RED_PRESS = "#e03a48"
 RED_TINT = "#3a1f2a"       # red at ~15% on a panel
 GREEN = "#3ddc97"
+AMBER = "#f5c84b"          # small heads-ups (sign-in needed)
 
 # shape: corner cuts (design pixels) by hierarchy, so not everything shares one radius
 CUT_CARD = 14

@@ -338,21 +338,55 @@ class Pill(tk.Canvas):
 
 
 class Avatar(tk.Canvas):
-    """Cut-corner badge with an initial."""
+    """Cut-corner badge showing an initial, an emblem (glyph name from icons.GLYPHS) or a picture (PIL image)."""
 
-    def __init__(self, parent, letter, fill, size=44, fg=None):
+    def __init__(self, parent, letter, fill, size=44, fg=None, glyph=None, picture=None):
         s = T.px(size)
         super().__init__(parent, width=s, height=s, bg=parent.cget("bg"), highlightthickness=0, bd=0)
         self._size, self._fill, self._fg, self.fade = s, fill, fg or T.FG, 1.0
+        self._glyph, self._picture, self._images = glyph, picture, {}
         self._shape = Shape(self)          # kept on self: Tk drops images nothing in Python refers to
-        self._text = self.create_text(s // 2, s // 2, text=letter, font=T.font(15, display=True))
+        self._mark = None
+        if picture is None and glyph is None:
+            self._mark = self.create_text(s // 2, s // 2, text=letter, font=T.font(15, display=True))
+        else:
+            self._mark = self.create_image(s // 2, s // 2, anchor="center")
         self._redraw()
+
+    def _mark_image(self, back, step):
+        """PhotoImage of the emblem or picture at this fade step (cached; there are only a few steps)."""
+        key = (back, step)
+        if key not in self._images:
+            from . import icons
+            f = step / 8
+            s = self._size
+            if self._picture is not None:
+                mask = Image.new("L", (s * 3, s * 3), 0)
+                c = T.px(T.CUT_SMALL + 2) * 3
+                W = s * 3 - 1
+                ImageDraw.Draw(mask).polygon([(c, 0), (W, 0), (W, W - c), (W - c, W), (0, W), (0, c)], fill=255)
+                im = self._picture.resize((s, s), Image.LANCZOS)
+                if f < 1.0:
+                    im = Image.blend(Image.new("RGBA", (s, s), _rgb(back) + (255,)), im, f)
+                im.putalpha(Image.composite(im.getchannel("A"), Image.new("L", (s, s), 0),
+                                            mask.resize((s, s), Image.LANCZOS)))
+            else:
+                inner = int(s * 0.62)
+                im = icons.glyph_image(self._glyph, inner, T.blend(back, self._fg, f))
+            self._images[key] = ImageTk.PhotoImage(im, master=self)
+        return self._images[key]
 
     def _redraw(self):
         back = self.cget("bg")
-        self._shape.draw(self._size, self._size, T.px(T.CUT_SMALL + 2), T.blend(back, self._fill, self.fade))
-        self.itemconfigure(self._text, fill=T.blend(back, self._fg, self.fade))
-        self.tag_raise(self._text)
+        if self._picture is not None:          # the picture fills the badge; no colored plate behind it
+            self._shape.hide()
+        else:
+            self._shape.draw(self._size, self._size, T.px(T.CUT_SMALL + 2), T.blend(back, self._fill, self.fade))
+        if self._glyph is None and self._picture is None:
+            self.itemconfigure(self._mark, fill=T.blend(back, self._fg, self.fade))
+        elif HAVE_PIL:
+            self.itemconfigure(self._mark, image=self._mark_image(back, round(self.fade * 8)))
+        self.tag_raise(self._mark)
 
     def set_backdrop(self, color):
         self.configure(bg=color)
@@ -598,8 +632,9 @@ class Card(tk.Canvas):
 class Field(tk.Canvas):
     """Cut-corner text box. Use .get() / .focus_set(); the real Entry is .entry."""
 
-    def __init__(self, parent, value="", secret=False, size=11, center=False):
+    def __init__(self, parent, value="", secret=False, size=11, center=False, placeholder=""):
         h = max(T.px(42), T.font(size).metrics("linespace") + T.px(18))
+        self._placeholder, self._showing_hint = ("" if secret else placeholder), False
         super().__init__(parent, height=h, bg=parent.cget("bg"), highlightthickness=0, bd=0)
         self._shape, self._focus, self._height_px = Shape(self), False, h
         self.entry = tk.Entry(self, bd=0, relief="flat", bg=T.FIELD, fg=T.FG, insertbackground=T.RED,
@@ -612,6 +647,14 @@ class Field(tk.Canvas):
         self.bind("<Button-1>", lambda e: self.entry.focus_set())
         self.entry.bind("<FocusIn>", lambda e: self._set_focus(True))
         self.entry.bind("<FocusOut>", lambda e: self._set_focus(False))
+        self._hint()
+
+    def _hint(self):
+        """Grey hint text while the box is empty and not being typed in."""
+        if self._placeholder and not self._focus and not self.entry.get():
+            self._showing_hint = True
+            self.entry.configure(fg=T.FAINT)
+            self.entry.insert(0, self._placeholder)
 
     def _on_resize(self, event):
         self.itemconfigure(self._win, width=max(10, event.width - 2 * self._pad))
@@ -619,6 +662,12 @@ class Field(tk.Canvas):
 
     def _set_focus(self, focused):
         self._focus = focused
+        if focused and self._showing_hint:
+            self._showing_hint = False
+            self.entry.delete(0, "end")
+            self.entry.configure(fg=T.FG)
+        elif not focused:
+            self._hint()
         self._draw()
 
     def _draw(self):
@@ -629,7 +678,13 @@ class Field(tk.Canvas):
                              stripe=(T.RED, T.px(3)) if self._focus else None)
 
     def get(self):
-        return self.entry.get()
+        return "" if self._showing_hint else self.entry.get()
+
+    def clear(self):
+        self._showing_hint = False
+        self.entry.delete(0, "end")
+        self.entry.configure(fg=T.FG)
+        self._hint()
 
     def focus_set(self):
         self.entry.focus_set()

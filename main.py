@@ -29,7 +29,8 @@ def main():
     mutex = kernel.CreateMutexW(None, False, "Local\\ValorantProfiles-1")  # same name as v2: never run both
     if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
         root = tk.Tk(); root.withdraw()
-        messagebox.showinfo(APP_NAME, "The app is already open. Use PLAY in its window"
+        messagebox.showinfo(APP_NAME, "The app is already open. Use PLAY in its window, or right-click its "
+                            "icon next to the clock"
                             + (" (or close it and use the shortcut again)." if autoplay else "."), parent=root)
         return 0
     try:  # own taskbar identity: shows this app's icon instead of grouping under Python
@@ -44,7 +45,7 @@ def main():
         store = Store(data_directory())
         store.read()
         from switcher.credentials import Credentials
-        App(store, Credentials(), autoplay).mainloop()
+        App(store, Credentials(), autoplay, tray=True).mainloop()
     except UserError as e:
         root = tk.Tk(); root.withdraw()
         messagebox.showerror(APP_NAME, str(e), parent=root)

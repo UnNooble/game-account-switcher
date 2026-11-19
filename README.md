@@ -36,6 +36,10 @@ A small Windows app for people with more than one Riot account.
   [Deceive](https://github.com/molenzwiebel/Deceive), a separate free open-source program that you download
   once (the app opens its official download page and finds the file for you). It is unofficial and can break
   when Riot changes its chat.
+- **Tray icon.** Keep the app next to the clock and right-click it to switch accounts. After the game starts it
+  tidies up: the app goes to the tray and the Riot Client and Tracker windows are minimized.
+- **Icons, search, order.** Give each account an emblem, a color or your own picture, search by nickname,
+  Riot ID or username, drag cards into any order, and see when you last played each one.
 - **Update notice.** A banner appears when a newer release is on GitHub (checked each time the app opens; can be turned off in ···).
 - **Per-account desktop shortcuts** that switch and launch in one double-click.
 - **Crash-safe.** File swaps are journaled and restored automatically after a crash or power loss.

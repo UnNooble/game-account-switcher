@@ -47,3 +47,64 @@ def forget_everything(data_root):
     except OSError:
         pass
     shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- tidy up after the game starts
+# Windows that may be minimized once VALORANT runs. They are only minimized, never closed: the game needs the
+# Riot Client running, and the stats overlay needs Overwolf. The game's own window is never in this list.
+TIDY_PROCESSES = {"riot client.exe", "riotclientux.exe", "riotclientuxrender.exe",
+                  "overwolf.exe", "overwolfbrowser.exe"}
+GAME_PROCESSES = {"valorant-win64-shipping.exe", "valorant.exe"}
+
+
+def game_running() -> bool:
+    try:
+        import psutil
+        return any((p.info.get("name") or "").lower() in GAME_PROCESSES for p in psutil.process_iter(["name"]))
+    except Exception:
+        return False
+
+
+def minimize_windows(names=TIDY_PROCESSES) -> int:
+    """Minimize the visible, normal app windows of these processes without taking focus. Returns how many."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import psutil
+    except Exception:
+        return 0
+    user32 = ctypes.windll.user32
+    GWL_STYLE, GWL_EXSTYLE = -16, -20
+    WS_MINIMIZEBOX, WS_EX_TOOLWINDOW, SW_SHOWMINNOACTIVE = 0x00020000, 0x00000080, 7
+    user32.GetWindowLongW.restype = ctypes.c_long
+    names = {n.lower() for n in names}
+    found, cache = [], {}
+
+    def process_name(pid):
+        if pid not in cache:
+            try:
+                cache[pid] = psutil.Process(pid).name().lower()
+            except Exception:
+                cache[pid] = ""
+        return cache[pid]
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _lparam):
+        if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd) or user32.GetWindow(hwnd, 4):  # 4 = owner
+            return True
+        style, ex = user32.GetWindowLongW(hwnd, GWL_STYLE), user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        if not style & WS_MINIMIZEBOX or ex & WS_EX_TOOLWINDOW:   # overlays and helper windows are left alone
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if process_name(pid.value) in names:
+            found.append(hwnd)
+        return True
+
+    try:
+        user32.EnumWindows(visit, 0)
+        for hwnd in found:
+            user32.ShowWindowAsync(hwnd, SW_SHOWMINNOACTIVE)
+    except Exception:
+        return 0
+    return len(found)

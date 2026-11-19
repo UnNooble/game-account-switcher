@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+- Tray icon next to the clock: right-click it to play any account, open the window, or quit. The close button
+  asks whether to keep the app in the tray or quit (with "Don't ask again"); change it in ··· → *Close button*.
+- Tidy up after the game starts: once VALORANT is running, the app goes to the tray and the Riot Client and
+  Overwolf/Tracker windows are minimized (not closed: the game and the overlay need them). ··· → *After the
+  game starts* turns it off.
+- Account icons: pick one of 12 emblems and a color, or upload your own picture (··· on a card → *Change icon*).
+- Each card shows when you last played that account, and a small "Sign-in needed" note when Riot will ask you
+  to sign in again.
+- Search box (from 3 accounts): finds accounts by nickname, Riot ID or Riot username.
+- Drag cards to put them in any order.
+
 ## 3.10.0
 - New look: a tactical HUD style. Panels and buttons have cut corners, titles, names and buttons use the
   Chakra Petch font (bundled), and the account you used last stands out with a red edge and a red-tinted card.

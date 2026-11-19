@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller==6.16.0 pytest
       - run: python -m pytest -q
-      - run: pyinstaller --noconfirm --clean --windowed --onedir --hidden-import PIL.ImageTk --name ValorantSwitcher --icon assets\icon.ico --add-data "assets;assets" main.py
+      - run: pyinstaller --noconfirm --clean --windowed --onedir --hidden-import PIL.ImageTk --hidden-import pystray._win32 --name ValorantSwitcher --icon assets\icon.ico --add-data "assets;assets" main.py
       - name: Make installer
         shell: pwsh
         run: |

@@ -12,17 +12,36 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 
-from . import APP_NAME, VERSION, resource, updates, worker
+from . import APP_NAME, VERSION, icons, resource, updates, worker
 from . import theme as T
 from .errors import UserError
 from . import widgets
-from .widgets import Avatar, Card, Pill, Progress, PopupMenu, Sheet, style_titlebar
+from .tray import Tray
+from .widgets import Avatar, Card, Field, Pill, Progress, PopupMenu, Sheet, style_titlebar
 
 STEPS = 5   # Check Riot, Sign in, Verify account, Start VALORANT, Playing
+SEARCH_FROM = 3   # show the search box once there are this many accounts
+
+
+def played_text(ts, now=None):
+    """'Played 2 hours ago' style text for a last-played time (0 = never)."""
+    if not ts:
+        return ""
+    gone = max(0, int((now or time.time()) - ts))
+    if gone < 60:
+        return "Played just now"
+    if gone >= 7 * 86400:
+        day = time.strftime("%b %d", time.localtime(ts)).replace(" 0", " ")
+        return "Played " + day
+    for size, unit in ((86400, "day"), (3600, "hour"), (60, "min")):
+        if gone >= size:
+            n = gone // size
+            return f"Played {n} {unit}{'' if n == 1 or unit == 'min' else 's'} ago"
+    return "Played just now"
 
 
 class App(tk.Tk):
-    def __init__(self, store, creds, autoplay=None):
+    def __init__(self, store, creds, autoplay=None, tray=False):
         super().__init__()
         T.init(self)
         self.store, self.creds = store, creds
@@ -40,6 +59,13 @@ class App(tk.Tk):
         self.prompt_open = False
         self.closing = False
         self.dock_visible = False
+        self.query = ""
+        self._drag = None
+        self._card_list = []
+        self._logins = {}
+        self.tray = Tray(store) if tray else None
+        if self.tray and not self.tray.start():
+            self.tray = None
         self.title(APP_NAME)
         self.configure(bg=T.BG)
         self._place_window()
@@ -141,8 +167,12 @@ class App(tk.Tk):
         self.update_label.pack(side="left")
         Pill(row, "Dismiss", self.hide_update, kind="plain", height=30, padx=14).pack(side="right")
         Pill(row, "Download", self.open_update, kind="primary", height=30, padx=16).pack(side="right", padx=(0, 8))
+        self.search_row = tk.Frame(self.body, bg=T.BG)
+        self.search = Field(self.search_row, size=10, placeholder="Search by nickname, Riot ID or username")
+        self.search.pack(fill="x", pady=(0, T.px(12)))
+        self.search.entry.bind("<KeyRelease>", lambda e: self.on_search(), add="+")
         self.canvas = tk.Canvas(self.body, bg=T.BG, highlightthickness=0, bd=0)
-        self.canvas.pack(fill="both", expand=True)
+        self.canvas.pack(fill="both", expand=True, side="bottom")
         self.cards = tk.Frame(self.canvas, bg=T.BG)
         win = self.canvas.create_window((0, 0), window=self.cards, anchor="nw")
         self.cards.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
@@ -172,19 +202,55 @@ class App(tk.Tk):
     def refresh(self):
         for w in self.cards.winfo_children():
             w.destroy()
+        self._card_list = []
         data = self.store.read()
         # The one orchestrated moment: cards sweep in, one after another, only when the window first opens.
         intro, self._intro_pending = getattr(self, "_intro_pending", True), False
-        if not data["profiles"]:
+        profiles = data["profiles"]
+        if len(profiles) >= SEARCH_FROM:
+            if not self.search_row.winfo_ismapped():
+                self.search_row.pack(fill="x", side="top")
+        else:
+            self.search_row.pack_forget()
+            self.search.clear()
+            self.query = ""
+        if not profiles:
             box = self.empty_state()
             if intro:
                 box.intro(120)
             return
-        for i, p in enumerate(data["profiles"]):
+        self._logins = {}
+        for p in profiles:
+            login = self.creds.load(p["id"])
+            self._logins[p["id"]] = login[0] if login else ""   # the username only; the password isn't kept
+        shown = [p for p in profiles if self.matches(p)]
+        if not shown:
+            tk.Label(self.cards, text="No account matches that search.", font=T.font(10), fg=T.MUTED,
+                     bg=T.BG).pack(anchor="w", pady=T.px(8))
+        for i, p in enumerate(shown):
             card = self.card(p, p["id"] == data["active"])
+            self._card_list.append((card, p))
             if intro and i < 8:
                 card.intro(120 + 70 * i)
         self.canvas.yview_moveto(0)
+        if self.tray and self.tray.icon is not None:
+            try:
+                self.tray.icon.update_menu()
+            except Exception:
+                pass
+
+    # ---------- search ----------
+    def matches(self, p):
+        q = self.query.strip().lower()
+        if not q:
+            return True
+        return any(q in (text or "").lower() for text in (p["label"], p["riot_id"], self._logins.get(p["id"])))
+
+    def on_search(self):
+        query = self.search.get()
+        if query != self.query:
+            self.query = query
+            self.refresh()
 
     def empty_state(self):
         box = Card(self.cards, padx=30, pady=34, stripe=T.RED)
@@ -203,8 +269,7 @@ class App(tk.Tk):
         card = Card(self.cards, fill=fill, padx=18, pady=14, stripe=T.RED if active else None)
         card.pack(fill="x", pady=(0, T.px(10)))
         inner = card.inner
-        letter = (p["label"][:1] or "?").upper()
-        avatar = Avatar(inner, letter, T.RED_TINT if active else T.AVATAR, size=46, fg=T.RED if active else T.FG)
+        avatar = self.avatar(inner, p, active, 46)
         avatar.pack(side="left", padx=(T.px(4) if active else 0, 0))
         text = tk.Frame(inner, bg=fill)
         text.pack(side="left", fill="x", expand=True, padx=(T.px(14), T.px(8)))
@@ -218,8 +283,15 @@ class App(tk.Tk):
         details.pack(anchor="w", pady=(1, 0))
         tk.Label(details, text=p["riot_id"] or "Not signed in yet", font=T.font(9), fg=T.MUTED, bg=fill,
                  anchor="w").pack(side="left")
-        if self.creds.has(p["id"]):
+        played = played_text(p.get("last_played"))
+        if played:
+            tk.Label(details, text=played, font=T.font(9), fg=T.FAINT, bg=fill).pack(side="left", padx=(T.px(14), 0))
+        if self._logins.get(p["id"]):
             tk.Label(details, text="Auto sign-in", font=T.font(9), fg=T.FAINT, bg=fill).pack(
+                side="left", padx=(T.px(14), 0))
+        elif p["riot_id"] and not self.has_saved_login(p["id"]):
+            # small heads-up: no saved login and no password, so Riot will ask to sign in
+            tk.Label(details, text="\u25cf  Sign-in needed", font=T.font(8), fg=T.AMBER, bg=fill).pack(
                 side="left", padx=(T.px(14), 0))
         more = Pill(inner, "···", None, kind="ghost", height=34, square=True)
         more.command = lambda b=more: self.menu(p, b)
@@ -228,14 +300,95 @@ class App(tk.Tk):
         play.pack(side="right", padx=(T.px(8), T.px(10)))
         card.update_idletasks()
         card.track_hover(fill, hover)
-        card.bind_click(lambda: self.launch(p), skip={more, play})
-        card.configure(cursor="hand2")
+        self.bind_drag(card, p, skip={more, play})
         return card
+
+    def avatar(self, parent, p, active, size):
+        fill, mark = icons.badge_colors(p, active)
+        icon = p.get("icon") or "letter"
+        picture = icons.load_picture(self.store.root, p["id"], T.px(size)) if icon == "custom" else None
+        glyph = icon[6:] if icon.startswith("glyph:") and icon[6:] in icons.GLYPHS else None
+        return Avatar(parent, (p["label"][:1] or "?").upper(), fill, size=size, fg=mark, glyph=glyph,
+                      picture=picture)
+
+    def has_saved_login(self, profile_id):
+        try:
+            return (self.store.root / "sessions" / (profile_id + ".bin")).exists()
+        except OSError:
+            return True
+
+    # ---------- drag to reorder (a click without moving still plays) ----------
+    def bind_drag(self, card, p, skip=()):
+        def bind_all(widget):
+            if widget in skip:
+                return
+            try:
+                widget.configure(cursor="hand2")
+            except tk.TclError:
+                pass
+            widget.bind("<ButtonPress-1>", lambda e: self._drag_start(card, p, e), add="+")
+            widget.bind("<B1-Motion>", self._drag_move, add="+")
+            widget.bind("<ButtonRelease-1>", self._drag_end, add="+")
+            for child in widget.winfo_children():
+                bind_all(child)
+        bind_all(card)
+
+    def _drag_start(self, card, p, event):
+        self._drag = {"card": card, "p": p, "y": event.y_root, "on": False, "index": None, "line": None}
+
+    def _drag_target(self, y_root):
+        for i, (card, _p) in enumerate(self._card_list):
+            if y_root < card.winfo_rooty() + card.winfo_height() // 2:
+                return i
+        return len(self._card_list)
+
+    def _drag_move(self, event):
+        d = self._drag
+        if not d:
+            return
+        if not d["on"]:
+            if abs(event.y_root - d["y"]) < T.px(8) or self.query or len(self._card_list) < 2 or self.busy():
+                return
+            d["on"] = True
+            d["line"] = tk.Frame(self.cards, bg=T.RED, height=max(2, T.px(3)))
+            d["card"].configure(cursor="fleur")
+        top, bottom = self.canvas.winfo_rooty(), self.canvas.winfo_rooty() + self.canvas.winfo_height()
+        if event.y_root < top + T.px(30):
+            self.canvas.yview_scroll(-1, "units")
+        elif event.y_root > bottom - T.px(30):
+            self.canvas.yview_scroll(1, "units")
+        d["index"] = i = self._drag_target(event.y_root)
+        cards = [c for c, _ in self._card_list]
+        if i < len(cards):
+            y = cards[i].winfo_y() - T.px(7)
+        else:
+            y = cards[-1].winfo_y() + cards[-1].winfo_height() + T.px(2)
+        d["line"].place(x=0, y=max(0, y), relwidth=1)
+        d["line"].lift()
+
+    def _drag_end(self, event):
+        d, self._drag = self._drag, None
+        if not d:
+            return
+        if not d["on"]:
+            inside = d["card"].winfo_containing(event.x_root, event.y_root)
+            if inside is not None and str(inside).startswith(str(d["card"])):
+                self.launch(d["p"])
+            return
+        ids = [p["id"] for _, p in self._card_list]
+        old = ids.index(d["p"]["id"])
+        new = d["index"] if d["index"] is not None else old
+        if new > old:
+            new -= 1
+        ids.insert(new, ids.pop(old))
+        self.store.reorder(ids)
+        self.refresh()
 
     def menu(self, p, anchor):
         if self.guard_busy():
             return
         items = [("Rename", lambda: self.rename(p)),
+                 ("Change icon\u2026", lambda: self.icon_sheet(p)),
                  ("Username & password…", lambda: self.edit_login(p)),
                  ("Sign in again", lambda: self.begin(p["id"], None, True, p["label"])),
                  ("Add desktop shortcut", lambda: self.shortcut(p))]
@@ -262,6 +415,10 @@ class App(tk.Tk):
             ("Stats overlay setup…", self.tracker_setup),
             ("Open log file", self.open_log),
             ("Animations: On" if widgets.MOTION else "Animations: Off", self.toggle_animations),
+            ("After the game starts: Tidy up" if self.store.read()["settings"]["tidy_after_launch"]
+             else "After the game starts: Leave windows", self.toggle_tidy),
+            ({"ask": "Close button: Ask", "tray": "Close button: Minimize to tray",
+              "quit": "Close button: Quit"}[self.store.read()["settings"]["close_action"]], self.cycle_close_action),
             None,
             ("Check for updates", self.check_updates_now),
             (("Automatic update check: On" if self.update_settings.read()["auto"]
@@ -387,12 +544,86 @@ class App(tk.Tk):
         if sheet.show():
             self.refresh()
 
+    def icon_sheet(self, p):
+        """Pick a letter, an emblem or your own picture, and a color, for one account."""
+        sheet = Sheet(self, "Account icon", width=520)
+        sheet.heading("Icon for " + p["label"])
+        sheet.text("Pick an emblem and a color, or use your own picture.")
+        state = {"icon": p.get("icon") or "letter", "color": p.get("color") or "", "upload": None}
+        grid = tk.Frame(sheet.body, bg=T.SHEET)
+        grid.pack(anchor="w", pady=(T.px(4), T.px(10)))
+        swatches = tk.Frame(sheet.body, bg=T.SHEET)
+        swatches.pack(anchor="w", pady=(0, T.px(6)))
+        actions = tk.Frame(sheet.body, bg=T.SHEET)
+        actions.pack(fill="x", pady=(T.px(6), 0))
+
+        def preview(icon):
+            q = dict(p, icon=icon, color=state["color"])
+            if icon == "custom" and state["upload"] is not None:
+                fill, mark = icons.badge_colors(q, False)
+                return lambda parent: Avatar(parent, "", fill, size=44, fg=mark, picture=state["upload"])
+            return lambda parent: self.avatar(parent, q, False, 44)
+
+        def tile(parent, make, selected, on_pick, column, row):
+            frame = tk.Frame(parent, bg=T.RED if selected else T.SHEET, padx=T.px(2), pady=T.px(2))
+            frame.grid(column=column, row=row, padx=T.px(3), pady=T.px(3))
+            widget = make(frame)
+            widget.pack()
+            for w in (frame, widget):
+                w.configure(cursor="hand2")
+                w.bind("<Button-1>", lambda e: on_pick(), add="+")
+
+        def draw():
+            for holder in (grid, swatches):
+                for w in holder.winfo_children():
+                    w.destroy()
+            choices = ["letter"] + ["glyph:" + name for name in icons.GLYPHS]
+            if state["upload"] is not None or p.get("icon") == "custom":
+                choices.append("custom")
+            for n, icon in enumerate(choices):
+                tile(grid, preview(icon), state["icon"] == icon, lambda i=icon: pick(icon=i), n % 7, n // 7)
+            for n, color in enumerate([""] + icons.PALETTE):
+                fill = color or T.AVATAR
+                tile(swatches, lambda parent, f=fill: tk.Frame(parent, bg=f, width=T.px(26), height=T.px(26)),
+                     state["color"] == color, lambda c=color: pick(color=c), n, 0)
+
+        def pick(**change):
+            state.update(change)
+            draw()
+
+        def upload():
+            path = filedialog.askopenfilename(parent=sheet, title="Choose a picture",
+                                              filetypes=[("Pictures", "*.png *.jpg *.jpeg *.webp *.bmp *.gif")])
+            if not path:
+                return
+            try:
+                state["upload"] = icons.read_picture(path)
+            except UserError as e:
+                sheet.show_error(str(e))
+                return
+            pick(icon="custom")
+
+        Pill(actions, "Upload picture\u2026", upload, kind="plain", height=32, padx=16).pack(side="left")
+        draw()
+
+        def save():
+            if state["icon"] == "custom" and state["upload"] is not None:
+                icons.save_picture(state["upload"], self.store.root, p["id"])
+            elif state["icon"] != "custom":
+                icons.remove_picture(self.store.root, p["id"])
+            self.store.update(p["id"], icon=state["icon"], color=state["color"])
+
+        sheet.buttons("Save", save)
+        if sheet.show():
+            self.refresh()
+
     def delete(self, p):
         if self.ask_yes_no(f"Remove {p['label']}?",
                            "This removes the account and its saved login from this PC.",
                            yes="Remove", no="Keep",
                            detail="Your Riot account itself isn't affected."):
             (self.store.root / "sessions" / (p["id"] + ".bin")).unlink(missing_ok=True)
+            icons.remove_picture(self.store.root, p["id"])
             self.creds.delete(p["id"])
             self.store.remove(p["id"])
             self.refresh()
@@ -832,6 +1063,12 @@ class App(tk.Tk):
                 self.handle_update(self.update_events.get_nowait())
         except queue.Empty:
             pass
+        if self.tray:
+            try:
+                while True:
+                    self.handle_tray(self.tray.events.get_nowait())
+            except queue.Empty:
+                pass
         try:
             while True:
                 kind, data = self.events.get_nowait()
@@ -841,6 +1078,9 @@ class App(tk.Tk):
                 elif kind == "done":
                     self.bar.set(1.0, T.GREEN)
                     self.msg.configure(fg=T.GREEN)
+                    if self.tray and not self.winfo_viewable():
+                        self.tray.notify(APP_NAME, self.msg.cget("text") or "Done.")
+                    self.after(1500, self.tidy_after_launch)
                 elif kind == "error":
                     self.set_message(data, T.RED)
                 elif kind == "prompt":
@@ -863,9 +1103,88 @@ class App(tk.Tk):
             return
         self.after(100, self.poll)
 
+    # ---------- closing: to the tray, or quit ----------
     def on_close(self):
+        action = self.store.read()["settings"]["close_action"] if self.tray else "quit"
+        if action == "ask":
+            action = self.ask_close()
+            if action is None:
+                return
+        if action == "tray":
+            self.hide_to_tray()
+        else:
+            self.quit_app()
+
+    def ask_close(self):
+        sheet = Sheet(self, "Close")
+        sheet.heading("Keep it running in the tray?")
+        sheet.text("The app can wait next to the clock, so you can switch accounts from there with a "
+                   "right-click. Quit closes it completely.")
+        remember = tk.BooleanVar(value=False)
+        sheet.check("Don't ask again (you can change it in \u00b7\u00b7\u00b7 \u2192 Close button)", remember)
+        sheet.buttons("Minimize to tray", lambda: "tray", secondary="Quit", secondary_value="quit")
+        choice = sheet.show()
+        if choice in ("tray", "quit") and remember.get():
+            self.store.set_close_action(choice)
+        return choice if choice in ("tray", "quit") else None
+
+    def toggle_tidy(self):
+        self.store.set_tidy_after_launch(not self.store.read()["settings"]["tidy_after_launch"])
+
+    def tidy_after_launch(self, attempt=0, hidden=False):
+        """Once VALORANT is running: this window goes to the tray (or the taskbar) once, and the Riot Client and
+        Overwolf/Tracker windows are minimized (never closed: the game and the overlay need them running).
+        Checked every 5 seconds for a minute, because the game takes a while to start and the Riot Client
+        window can pop up again while it loads. Opening the window yourself is never undone."""
+        from . import system
+        if not self.store.read()["settings"]["tidy_after_launch"] or self.busy():
+            return
+        if system.game_running():
+            if not hidden:
+                hidden = True
+                if self.tray:
+                    self.hide_to_tray()
+                else:
+                    self.iconify()
+            system.minimize_windows()
+        if attempt < 12:
+            self.after(5000, lambda: self.tidy_after_launch(attempt + 1, hidden))
+
+    def cycle_close_action(self):
+        order = ["ask", "tray", "quit"]
+        current = self.store.read()["settings"]["close_action"]
+        self.store.set_close_action(order[(order.index(current) + 1) % 3])
+
+    def hide_to_tray(self):
+        self.close_menu()
+        self.withdraw()
+
+    def show_from_tray(self):
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def quit_app(self):
         if self.busy():
             self.closing = True
+            self.show_from_tray()
             self.stop()  # let the switch finish or roll back before exiting
         else:
             self.destroy()
+
+    def destroy(self):
+        if getattr(self, "tray", None):
+            self.tray.stop()
+            self.tray = None
+        super().destroy()
+
+    def handle_tray(self, event):
+        kind = event[0]
+        if kind == "open":
+            self.show_from_tray()
+        elif kind == "quit":
+            self.quit_app()
+        elif kind == "play":
+            profile = self.store.get(event[1])
+            if profile:
+                self.launch(profile)

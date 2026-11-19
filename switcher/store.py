@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import threading
+import time
 import uuid
 
 from .errors import UserError
@@ -43,7 +45,23 @@ def clean_label(value) -> str:
 def empty() -> dict:
     return {"version": SCHEMA, "profiles": [], "active": None, "settings": {"riot_path": "", "deceive_path": "", "appear_offline": False,
                                                                        "tracker_path": "", "stats_overlay": False,
-                                                                       "animations": True}}
+                                                                       "animations": True, "close_action": "ask",
+                                                                       "tidy_after_launch": True}}
+
+
+CLOSE_ACTIONS = ("ask", "tray", "quit")
+ICON_RE = re.compile(r"^(letter|custom|glyph:[a-z]{1,20})$")
+COLOR_RE = re.compile(r"^#[0-9a-f]{6}$")
+
+
+def _profile(p: dict) -> dict:
+    """One account, with every optional field present and checked (older files simply lack them)."""
+    icon = p.get("icon") if isinstance(p.get("icon"), str) and ICON_RE.match(p.get("icon")) else "letter"
+    color = str(p.get("color") or "").lower()
+    played = p.get("last_played")
+    return {"id": p["id"], "label": clean_label(p["label"]), "riot_id": str(p.get("riot_id") or "")[:64],
+            "icon": icon, "color": color if COLOR_RE.match(color) else "",
+            "last_played": int(played) if isinstance(played, (int, float)) and played > 0 else 0}
 
 
 class Store:
@@ -77,9 +95,7 @@ class Store:
             if not valid_id(p["id"]) or p["id"] in seen:
                 raise ValueError("bad id")
             seen.add(p["id"])
-            riot_id = p.get("riot_id") or ""
-            data["profiles"].append({"id": p["id"], "label": clean_label(p["label"]),
-                                     "riot_id": str(riot_id)[:64]})
+            data["profiles"].append(_profile(p))
         active = raw.get("active")
         data["active"] = active if active in seen else None
         path = raw.get("settings", {}).get("riot_path", "")
@@ -91,6 +107,9 @@ class Store:
         data["settings"]["tracker_path"] = tracker if isinstance(tracker, str) else ""
         data["settings"]["stats_overlay"] = bool(raw.get("settings", {}).get("stats_overlay", False))
         data["settings"]["animations"] = bool(raw.get("settings", {}).get("animations", True))
+        data["settings"]["tidy_after_launch"] = bool(raw.get("settings", {}).get("tidy_after_launch", True))
+        close = raw.get("settings", {}).get("close_action", "ask")
+        data["settings"]["close_action"] = close if close in CLOSE_ACTIONS else "ask"
         return data
 
     def write(self, data: dict) -> None:
@@ -105,7 +124,7 @@ class Store:
         with self.lock:
             data = self.read()
             profile_id = profile_id or str(uuid.uuid4())
-            data["profiles"].append({"id": profile_id, "label": clean_label(label), "riot_id": riot_id})
+            data["profiles"].append(_profile({"id": profile_id, "label": label, "riot_id": riot_id}))
             self.write(data)
             return profile_id
 
@@ -118,6 +137,9 @@ class Store:
                         p["label"] = clean_label(fields["label"])
                     if "riot_id" in fields:
                         p["riot_id"] = str(fields["riot_id"] or "")[:64]
+                    if "icon" in fields or "color" in fields:
+                        p.update(_profile(dict(p, icon=fields.get("icon", p["icon"]),
+                                                  color=fields.get("color", p["color"]))))
             self.write(data)
 
     def remove(self, profile_id) -> None:
@@ -138,10 +160,37 @@ class Store:
             items[i], items[i + offset] = items[i + offset], items[i]
             self.write(data)
 
-    def set_active(self, profile_id) -> None:
+    def reorder(self, profile_ids) -> None:
+        """Put the accounts in this order (from dragging). Unknown ids are ignored, missing ones keep their place
+        at the end, so a stale list can never lose an account."""
+        with self.lock:
+            data = self.read()
+            by_id = {p["id"]: p for p in data["profiles"]}
+            ordered = [by_id.pop(i) for i in profile_ids if i in by_id]
+            data["profiles"] = ordered + [p for p in data["profiles"] if p["id"] in by_id]
+            self.write(data)
+
+    def set_active(self, profile_id, played=True) -> None:
+        """Mark the account as the current one; played=True also records now as its last-played time."""
         with self.lock:
             data = self.read()
             data["active"] = profile_id
+            if played:
+                for p in data["profiles"]:
+                    if p["id"] == profile_id:
+                        p["last_played"] = int(time.time())
+            self.write(data)
+
+    def set_tidy_after_launch(self, value: bool) -> None:
+        with self.lock:
+            data = self.read()
+            data["settings"]["tidy_after_launch"] = bool(value)
+            self.write(data)
+
+    def set_close_action(self, value: str) -> None:
+        with self.lock:
+            data = self.read()
+            data["settings"]["close_action"] = value if value in CLOSE_ACTIONS else "ask"
             self.write(data)
 
     def set_appear_offline(self, value: bool) -> None:

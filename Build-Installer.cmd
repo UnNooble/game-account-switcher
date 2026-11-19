@@ -13,7 +13,7 @@ if errorlevel 1 goto failed
 for /f %%v in ('.venv\Scripts\python.exe -c "import switcher; print(switcher.VERSION)"') do set "VER=%%v"
 
 echo [1/2] Packing the app into ValorantSwitcher.exe ...
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --log-level WARN --windowed --onedir --hidden-import PIL.ImageTk --name ValorantSwitcher --icon assets\icon.ico --add-data "assets;assets" main.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --log-level WARN --windowed --onedir --hidden-import PIL.ImageTk --hidden-import pystray._win32 --name ValorantSwitcher --icon assets\icon.ico --add-data "assets;assets" main.py
 if errorlevel 1 goto failed
 
 echo [2/2] Making the installer ...

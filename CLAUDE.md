@@ -20,6 +20,9 @@ short, and don't make big changes without saying what they are.
 - `switcher/ui.py`, `widgets.py`, `theme.py` Tkinter UI: tactical HUD look (cut-corner `Shape`s, Chakra Petch from
   `assets/fonts`, loaded privately), animations via `widgets.animate()`, gated by the in-app Animations setting
   (`widgets.MOTION`); `updates.py` GitHub update check
+- `switcher/tray.py` tray icon (pystray thread -> queue -> `App.poll`); `icons.py` account emblems (original
+  shapes drawn in code: never use Riot/agent artwork) and uploaded pictures (`icons/<id>.png`, re-encoded);
+  `system.minimize_windows` tidies Riot/Overwolf windows after launch (minimize only, never close)
 - `tests/` engine tests use a simulated Riot Client (`FakeRiot` in `test_engine.py`); `test_ui_real.py` needs a real display
 
 ## Rules
