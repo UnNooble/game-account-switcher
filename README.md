@@ -9,8 +9,7 @@ A small Windows app for people with more than one Riot account.
   </a>
 </h2>
 
-<p align="center"><b><a href="https://github.com/UnNooble/game-account-switcher/releases/latest">Click here</a></b>, then under <b>Assets</b> on the page that opens, download <code>GameAccountSwitcher-Setup-x.y.z.exe</code> and run it.<br>
-While the repository is private, only people you've added as collaborators can open it.</p>
+<p align="center"><b><a href="https://github.com/UnNooble/game-account-switcher/releases/latest">Click here</a></b>, then under <b>Assets</b> on the page that opens, download <code>GameAccountSwitcher-Setup-x.y.z.exe</code> and run it.</p>
 
 > **Unofficial.** Game Account Switcher isn't endorsed by Riot Games and doesn't reflect the views or opinions
 > of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games,
@@ -19,7 +18,7 @@ While the repository is private, only people you've added as collaborators can o
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0f1923)
 ![python](https://img.shields.io/badge/python-3.12-ff4655)
-![status](https://img.shields.io/badge/status-private%20beta-17222e)
+![status](https://img.shields.io/badge/status-beta-17222e)
 
 ## Features
 

@@ -22,7 +22,9 @@ short, and don't make big changes without saying what they are.
 
 ## Rules
 - Never commit or print secrets: passwords, tokens, saved sessions, `*.vasbak` backups, private keys. `.gitignore` covers them.
-- Don't push, tag or publish to GitHub unless the owner asks. Commit author email must be the GitHub noreply address.
+- After every update or fix, run the tests, commit and push to `main` (the owner wants GitHub always current).
+  Ask before tagging or publishing a release. Commit author email must be the GitHub noreply address.
+- The repository is public: everything committed is visible to anyone.
 - Don't touch Vanguard, game files, the firewall or UAC. Never sign out of Riot (it revokes the saved login).
 - Keep it free and non-commercial (Riot's fan-project rules): no ads, donations, paywalls or license keys.
 - Keep Riot's non-endorsement notice and trademark line (README, TERMS.txt, footer). Don't put "valorant" in app names or GitHub topics.
