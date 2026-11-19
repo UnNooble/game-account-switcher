@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.11.0
 - Tray icon next to the clock: right-click it to play any account, open the window, or quit. The close button
   asks whether to keep the app in the tray or quit (with "Don't ask again"); change it in ··· → *Close button*.
 - Tidy up after the game starts: once VALORANT is running, the app goes to the tray and the Riot Client and

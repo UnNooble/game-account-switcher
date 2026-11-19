@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-VERSION = "3.10.0"
+VERSION = "3.11.0"
 APP_NAME = "Game Account Switcher"
 
 
